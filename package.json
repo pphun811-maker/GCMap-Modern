@@ -1,5 +1,5 @@
 {
-  "name": "flight-line",
+  "name": "gcmap-modern",
   "private": true,
   "version": "0.1.0",
   "description": "Great-circle route mapper with Apple Maps-style vector and satellite basemaps",
@@ -7,7 +7,7 @@
   "author": "pphun811-maker",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pphun811-maker/flight-line.git"
+    "url": "git+https://github.com/pphun811-maker/GCMap-Modern.git"
   },
   "keywords": [
     "maplibre",

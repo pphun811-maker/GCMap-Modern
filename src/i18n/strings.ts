@@ -2,8 +2,8 @@ export type Lang = 'zh' | 'en';
 
 export const STRINGS = {
   zh: {
-    appName: '航线图',
-    docTitle: '航线图 · 大圆航线地图',
+    appName: 'GCMap Modern',
+    docTitle: 'GCMap Modern · 大圆航线地图',
     searchPlaceholder: '输入机场代码或名称，回车加为标签',
     searchHint: '回车把输入加为标签；标签 ≥2 个且输入为空时，回车创建航线',
     commitHint: '点经停上的 × 删除，或用 ⇄ 反向',
@@ -36,8 +36,8 @@ export const STRINGS = {
     expandPanel: '展开面板',
   },
   en: {
-    appName: 'Flight Line',
-    docTitle: 'Flight Line · Great Circle Mapper',
+    appName: 'GCMap Modern',
+    docTitle: 'GCMap Modern · Great Circle Mapper',
     searchPlaceholder: 'Airport code or name — Enter adds a tag',
     searchHint: 'Enter adds a tag; with 2+ tags and an empty input, Enter creates the route',
     commitHint: 'Click × on a stop to remove it, or ⇄ to reverse',

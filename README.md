@@ -1,6 +1,6 @@
-# Flight Line
+# GCMap Modern
 
-Flight Line is a browser-based great-circle route mapper. Airport codes are assembled into one
+GCMap Modern is a browser-based great-circle route mapper. Airport codes are assembled into one
 or more routes; the application draws the great-circle path between consecutive airports on an
 Apple Maps-style map and reports the distance and initial bearing of every leg, along with the
 route total in kilometres, statute miles, or nautical miles.
