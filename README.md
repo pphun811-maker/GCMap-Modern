@@ -9,20 +9,20 @@ English | [简体中文](README.zh-CN.md)
 
 ## Features
 
-- **Dual basemaps.** A vector basemap in an Apple Maps-inspired palette, with global landcover
+- **Dual basemaps:** A vector basemap in an Apple Maps-inspired palette, with global landcover
   imagery underneath, terrain hillshade, and ground-use coloring; plus an Esri World Imagery
   satellite mode. Place labels stay readable in both modes.
-- **Multiple routes.** Routes are managed in a list; each has independent visibility, color,
+- **Multiple routes:** Routes are managed in a list; each has independent visibility, color,
   and line width, and new routes are assigned colors automatically.
-- **Great-circle geometry.** Per-leg distance and initial bearing, route totals, and
+- **Great-circle geometry:** Per-leg distance and initial bearing, route totals, and
   km / mi / nm conversion. Routes crossing the antimeridian are drawn continuously.
-- **Bilingual place labels.** Map labels switch between Simplified Chinese and English, and can
+- **Bilingual place labels:** Map labels switch between Simplified Chinese and English, and can
   be hidden entirely.
-- **Airport search.** 8,799 airports from the OurAirports database, searchable by IATA/ICAO
+- **Airport search:** 8,799 airports from the OurAirports database, searchable by IATA/ICAO
   code or by name.
-- **Two input modes.** A tag-flow input for interactive composition, and a raw-text mode that
+- **Two input modes:** A tag-flow input for interactive composition, and a raw-text mode that
   accepts several routes pasted at once.
-- **URL deep links.** Routes, language, basemap, unit, and label visibility are all encoded in
+- **URL deep links:** Routes, language, basemap, unit, and label visibility are all encoded in
   the URL and restored on load.
 
 ## Getting started
