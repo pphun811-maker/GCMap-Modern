@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flight Line · 大圆航线地图</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // 临时排错钩子：把未捕获错误写到 DOM（上线前移除）
+      window.addEventListener('error', (e) => {
+        const d = document.createElement('pre');
+        d.id = 'err-hook';
+        d.textContent = 'ERR: ' + ((e.error && (e.error.stack || e.error.message)) || e.message);
+        document.body.appendChild(d);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        const d = document.createElement('pre');
+        d.id = 'err-hook-promise';
+        d.textContent = 'REJ: ' + String((e.reason && (e.reason.stack || e.reason.message)) || e.reason);
+        document.body.appendChild(d);
+      });
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

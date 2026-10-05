@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+tsconfig.tsbuildinfo
+
+# Local tooling state
+.zcode/
+
+# Airport data source: download from https://ourairports.com/data/ (see README).
+# The generated src/data/airports.json is committed.
+scripts/airports.csv
+
+# design-assets: only the generated artifacts consumed by the build are tracked
+# (style JSON, landcover imagery, UI design tokens); reference materials stay local.
+design-assets/*
+!design-assets/styles/
+design-assets/styles/*
+!design-assets/styles/apple-landcover.json
+!design-assets/demo/
+design-assets/demo/*
+!design-assets/demo/tiles/
+design-assets/demo/tiles/*
+!design-assets/demo/tiles/global-lc-merc.png
+!design-assets/demo/tiles/global-lc-merc-hd.png
+!design-assets/palettes/
+design-assets/palettes/*
+!design-assets/palettes/apple-maps-tokens.css

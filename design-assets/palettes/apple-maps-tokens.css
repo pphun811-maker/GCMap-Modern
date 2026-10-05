@@ -1,0 +1,155 @@
+/* ============================================================
+   Apple 地图风格 · Design Tokens
+   ------------------------------------------------------------
+   数据来源：
+   - specs/apple-maps.md（AntV aimapui 提炼的 Apple Maps 设计语言规范）
+   - Snazzy Maps #42 "Apple Maps-esque"（经典版语义色板）
+   注意：带 [推导] 标记的色值是我基于规范推导的建议值，未经官方确认，
+        实际使用请以视觉效果微调。
+   注意：经典版色板偏鲜艳，现役 Apple Maps 更灰更淡，
+        实际落地建议整体降饱和 10%~20%（见文件末尾 .apple-maps-modern）。
+   ============================================================ */
+
+:root {
+  /* ---------- 底图：面状用地语义色 ---------- */
+  --map-land:            #F7F1DF;  /* 建成区 / 陆地底色（暖米白，是画布不是要素） */
+  --map-land-natural:    #D0E3B4;  /* 林地 / 自然地表 */
+  --map-park:            #BDE6AB;  /* 公园 / 绿地 */
+  --map-water:           #A2DAF2;  /* 水系 */
+  --map-water-deep:      #8FCDEA;  /* 深水 [推导] */
+  --map-building:        #EFE9DC;  /* 建筑体块 [推导]，比陆地略深一档 */
+  --map-building-edge:   #E2DBCB;  /* 建筑描边 [推导] */
+
+  --map-road-fill:       #FFFFFF;  /* 主干 / 支路路面 */
+  --map-road-casing:     #E3DDCE;  /* 道路描边（casing）[推导] */
+  --map-road-highway:    #FFE15F;  /* 高速 / 快速路填充 */
+  --map-road-highway-casing: #EFD151; /* 高速描边 */
+
+  --map-airport:         #CFB2DB;  /* 机场 */
+  --map-medical:         #FBD3DA;  /* 医疗设施 */
+  --map-school:          #E8E4F0;  /* 教育科研 [推导] */
+  --map-parking:         #EDE8DE;  /* 停车场 [推导] */
+
+  /* POI 类别色（图标底色） */
+  --poi-food:            #FF9500;  /* 餐饮 */
+  --poi-attraction:      #FFCC00;  /* 景点 / 地标 */
+  --poi-lodging:         #AF52DE;  /* 住宿 */
+  --poi-medical:         #FF3B30;  /* 医疗 */
+  --poi-culture:         #FF2D55;  /* 文化 / 影院 / 购物 */
+  --poi-worship:         #C7B8E8;  /* 宗教场所 */
+
+  /* ---------- UI 交互色 ---------- */
+  --ui-blue:             #0088FF;  /* 主交互色：按钮、链接、选中态 */
+  --ui-blue-dark:        #0C79FE;  /* 地图 Pin / 深色模式主色 */
+  --ui-blue-pressed:     rgba(0, 136, 255, 0.08);
+  --ui-blue-tinted:      rgba(0, 136, 255, 0.12);
+  --ui-red:              #FF383C;  /* 错误 / 已关闭 */
+  --ui-red-text:         #AC480C;  /* 地点标签文字 */
+
+  /* 定位与标记渐变 */
+  --loc-gradient-start:  #FFA62B;
+  --loc-gradient-end:    #FF5D00;
+  --pin-base:            #F19B3F;
+  --pin-dot:             #FF5C00;
+  --pin-glow:            #579DFF;
+
+  /* ---------- 表面 / 文本 ---------- */
+  --surface-white:       #FFFFFF;
+  --surface-light:       #F5F6F3;  /* 详情面板底色 */
+  --surface-gray:        #E6E5E5;  /* 次级按钮背景 */
+  --separator:           #BDBDBD;  /* 分割线 0.5~1px */
+  --text-primary:        #000000;
+  --text-secondary:      #868782;
+  --text-tertiary:       #7A7B78;
+  --text-link:           #0088FF;
+
+  /* ---------- 圆角 ---------- */
+  --r-icon-border:       2px;
+  --r-grabber:           4px;
+  --r-widget:            12px;   /* 温度小组件 */
+  --r-action:            14px;   /* Directions / Call / Website */
+  --r-icon-bg:           16px;
+  --r-avatar-sm:         18px;
+  --r-search:            22px;
+  --r-button:            24px;   /* 工具栏 / 导航按钮 / 卡片 */
+  --r-button-lg:         26px;
+  --r-avatar-lg:         28px;
+  --r-sheet:             36px;   /* 底部面板顶部圆角 */
+  --r-icon-xl:           41px;
+
+  /* ---------- 阴影（只给"浮起来"的东西） ---------- */
+  --shadow-glass:        0px 4px 32px rgba(0, 0, 0, 0.16);
+  --shadow-glass-light:  0px 4px 32px rgba(0, 0, 0, 0.08);
+  --shadow-pin:          0px 4px 16px rgba(0, 0, 0, 0.24);
+
+  /* ---------- 间距 ---------- */
+  --sp-xs: 2px;  --sp-sm: 4px;  --sp-md: 8px;
+  --sp-lg: 12px; --sp-xl: 16px; --sp-2xl: 24px; --sp-3xl: 28px;
+
+  /* ---------- 字号（SF Pro / 回退 Inter） ---------- */
+  --fs-large-title: 28px;  /* 700 / 33px */
+  --fs-title:       20px;  /* 590 / 24px */
+  --fs-title-2:     19px;  /* 700 / 23px */
+  --fs-body:        17px;  /* 400 / 20px */
+  --fs-caption:     16px;  /* 590 / 19px */
+  --fs-caption-2:   15px;  /* 400 / 18px */
+  --fs-small:       13px;  /* 590 / 16px */
+  --fs-micro:       12px;  /* 700 / 14px */
+  --fs-tiny:        11px;  /* 700 / 13px */
+
+  /* 字间距 */
+  --ls-title:   -0.8px;
+  --ls-button:  -0.5px;
+  --ls-status:  -0.3px;
+}
+
+/* ------------------------------------------------------------
+   现役 Apple Maps 观感：更淡、更灰。
+   在根元素上加 class="apple-maps-modern" 即可整体降饱和。
+   ------------------------------------------------------------ */
+.apple-maps-modern {
+  --map-land:         #F4F1EA;
+  --map-land-natural: #D8E5C4;
+  --map-park:         #CBE3B8;
+  --map-water:        #B3DDF2;
+  --map-building:     #EFEAE1;
+  --map-road-casing:  #E6E1D5;
+  --map-road-highway: #F7DE84;
+  --map-road-highway-casing: #E9CE77;
+}
+
+/* ------------------------------------------------------------
+   Liquid Glass（UI 浮层材质）
+   规范原文见 specs/apple-maps.md 第 3.1 节
+   ------------------------------------------------------------ */
+.glass-button {
+  position: relative;
+  isolation: isolate;
+  background: rgba(0, 0, 0, 0.004);
+  box-shadow: var(--shadow-glass);
+  border-radius: var(--r-button);
+}
+.glass-button::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(0deg, rgba(245,245,245,0.4), rgba(245,245,245,0.4)), #0F0F0F;
+  background-blend-mode: normal, color-dodge;
+  backdrop-filter: blur(4.05px);
+  border-radius: inherit;
+}
+.glass-panel {
+  position: relative;
+  isolation: isolate;
+  background: rgba(0, 0, 0, 0.004);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(16.25px);
+  border-radius: var(--r-sheet);
+}
+.glass-panel::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(0deg, rgba(245,245,245,0.2), rgba(245,245,245,0.2)), rgba(15,15,15,0.2);
+  background-blend-mode: normal, color-dodge;
+  backdrop-filter: blur(21.65px);
+  border-radius: inherit;
+}
