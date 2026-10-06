@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { MapController, type LegInfo, type RouteEntry } from './map/MapController';
 import type { BaseMode, LabelLanguage } from './map/styleFactory';
-import { findByCode, type Airport } from './data/search';
+import { findByCode, findAirportNear, type Airport } from './data/search';
 import { convertDistance, type Units } from './geo/greatCircle';
+import {
+  decodePolyline, encodePolyline, fetchLatestOfp, simbriefDispatchUrl,
+} from './simbrief/simbrief';
 import { STRINGS, type Lang } from './i18n/strings';
 import { SearchPanel } from './components/SearchPanel';
 import { RouteList, ROUTE_COLORS } from './components/RouteList';
@@ -12,12 +15,15 @@ import { TopRightControls } from './components/TopRightControls';
 let uid = 0;
 const nextId = () => `rt-${++uid}`;
 
+const SB_USER_KEY = 'gcmap.sbfuser';
+
 interface UrlState {
   routes: RouteEntry[];
   lang: Lang;
   base: BaseMode;
   units: Units;
   labels: boolean;
+  sbf: string;
 }
 
 // 多条航线用 ; 分隔（单条内机场用 - 连接），旧单航线链接自动兼容
@@ -40,16 +46,51 @@ function parseRoutesParam(v: string | null): RouteEntry[] {
   return out;
 }
 
+// SimBrief 真实航路快照：每条一个 sbr=<polyline> 参数，首末航点解析回机场供 Pin/列表显示
+function parseSbrParam(q: URLSearchParams): RouteEntry[] {
+  const out: RouteEntry[] = [];
+  for (const val of q.getAll('sbr')) {
+    let pts: { lat: number; lon: number }[];
+    try {
+      pts = decodePolyline(val);
+    } catch {
+      continue;
+    }
+    if (pts.length < 2) continue;
+    const a = findAirportNear(pts[0].lat, pts[0].lon);
+    const b = findAirportNear(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
+    if (!a || !b) continue;
+    out.push({
+      id: nextId(),
+      airports: [a, b],
+      visible: true,
+      color: ROUTE_COLORS[out.length % ROUTE_COLORS.length],
+      width: 1,
+      waypoints: pts.map((p) => ({ ident: '', lat: p.lat, lon: p.lon })),
+    });
+  }
+  return out;
+}
+
 function parseUrl(): UrlState {
   const q = new URLSearchParams(window.location.search);
   return {
-    routes: parseRoutesParam(q.get('route')),
+    // 快照航线在前、代码航线在后：初始选中（最后一条）落在用户最近在操作的代码航线上
+    routes: [...parseSbrParam(q), ...parseRoutesParam(q.get('route'))],
     lang: q.get('lang') === 'en' ? 'en' : 'zh',
     base: q.get('base') === 'satellite' ? 'satellite' : 'vector',
     units: q.get('u') === 'mi' || q.get('u') === 'nm' ? (q.get('u') as Units) : 'km',
     labels: q.get('labels') !== '0',
+    sbf: q.get('sbf') ?? '',
   };
 }
+
+/** SimBrief 导入的 UI 状态：空闲 / 输用户名 / 等待生成（轮询中）/ 结果提示 */
+type SbfUi =
+  | { kind: 'idle' }
+  | { kind: 'ask' }
+  | { kind: 'waiting'; username: string; routeId: string; codes: string }
+  | { kind: 'msg'; text: string; error: boolean };
 
 export default function App() {
   const initial = useRef(parseUrl()).current;
@@ -63,11 +104,17 @@ export default function App() {
   const [labelsOn, setLabelsOn] = useState(initial.labels);
   const [legsMap, setLegsMap] = useState<Record<string, LegInfo[]>>({});
   const [panelOpen, setPanelOpen] = useState(true);
+  const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
+  const [mapReady, setMapReady] = useState(false);
 
   const mapDivRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
   const readyRef = useRef(false);
   const fmtRef = useRef<(km: number, u: Units) => string>(() => '');
+  // SimBrief 轮询：基线签名（undefined=基线未定 / null=无历史计划或基线拉取失败）/ 防重入 / 轮询函数
+  const sbfBaselineRef = useRef<string | null | undefined>(undefined);
+  const sbfBusyRef = useRef(false);
+  const pollSbfRef = useRef<() => void>(() => {});
   // 视野适配意图：加航线→适配该条（批量→适配新增并集）；删航线/编辑经停→适配目标；样式与显隐变化不挪视野
   const fitTargetRef = useRef<{ id?: string; ids?: string[]; all?: boolean } | null>(null);
 
@@ -83,6 +130,7 @@ export default function App() {
     controllerRef.current = controller;
     controller.onReady(() => {
       readyRef.current = true;
+      setMapReady(true);
       controller.setBase(initial.base);
       controller.setLabelsVisible(initial.labels);
       if (initial.routes.length) {
@@ -142,8 +190,15 @@ export default function App() {
   // URL 同步（replaceState，不产生历史记录）
   useEffect(() => {
     const q = new URLSearchParams();
-    if (routes.length) {
-      q.set('route', routes.map((r) => r.airports.map((a) => a.iata || a.icao).join('-')).join(';'));
+    // 普通航线进 route 参数；真实航路（含航点）无法用机场代码表达，逐条存 polyline 快照 sbr=
+    const codeRoutes = routes.filter((r) => !(r.waypoints && r.waypoints.length >= 2));
+    if (codeRoutes.length) {
+      q.set('route', codeRoutes.map((r) => r.airports.map((a) => a.iata || a.icao).join('-')).join(';'));
+    }
+    for (const r of routes) {
+      if (r.waypoints && r.waypoints.length >= 2) {
+        q.append('sbr', encodePolyline(r.waypoints));
+      }
     }
     if (lang !== 'zh') q.set('lang', lang);
     if (base !== 'vector') q.set('base', base);
@@ -155,7 +210,11 @@ export default function App() {
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
-  const addRoutes = (groups: Airport[][]) => {
+  // extra：SimBrief 直达链接载入时附带的 waypoints / simbriefUser
+  const addRoutes = (
+    groups: Airport[][],
+    extra?: Partial<Pick<RouteEntry, 'waypoints' | 'simbriefUser'>>,
+  ) => {
     if (!groups.length) return;
     const used = new Set(routes.map((r) => r.color.toLowerCase()));
     const entries: RouteEntry[] = groups.map((airports, i) => {
@@ -163,7 +222,7 @@ export default function App() {
         ROUTE_COLORS.find((c) => !used.has(c.toLowerCase())) ??
         ROUTE_COLORS[(routes.length + i) % ROUTE_COLORS.length];
       used.add(color.toLowerCase());
-      return { id: nextId(), airports, visible: true, color, width: 1 };
+      return { id: nextId(), airports, visible: true, color, width: 1, ...extra };
     });
     setRoutes((rs) => [...rs, ...entries]);
     setSelectedId(entries[entries.length - 1].id);
@@ -193,16 +252,150 @@ export default function App() {
     fitTargetRef.current = { all: true };
   };
 
-  // 选中航线的经停编辑（chips 删除 / 反向）；删到没有经停时整条删除
+  // 选中航线的经停编辑（chips 删除 / 反向）；删到没有经停时整条删除。
+  // 经停一旦编辑，原真实航路折线不再成立，回退为大圆弧
   const editSelected = (airports: Airport[]) => {
     if (!selectedId) return;
     if (!airports.length) {
       deleteRoute(selectedId);
       return;
     }
-    patchRoute(selectedId, { airports });
+    patchRoute(selectedId, { airports, waypoints: undefined, simbriefUser: undefined });
     fitTargetRef.current = { id: selectedId };
   };
+
+  // ---- SimBrief 真实航路（路线 B：带参跳转生成页 + 轮询拉回，无需 key/后端） ----
+  const showSbfMsg = (text: string, error = false) => setSbfUi({ kind: 'msg', text, error });
+
+  const importSbf = async (username: string, routeId: string): Promise<boolean> => {
+    try {
+      const r = await fetchLatestOfp(username);
+      // 起降机场以 OFP 为准（ICAO 优先，解析失败时保留原机场）
+      const oa = findByCode(r.originIcao) ?? findByCode(r.originIata);
+      const da = findByCode(r.destIcao) ?? findByCode(r.destIata);
+      setRoutes((rs) =>
+        rs.map((x) =>
+          x.id === routeId
+            ? {
+                ...x,
+                airports: oa && da ? [oa, da] : x.airports,
+                waypoints: r.waypoints,
+                simbriefUser: username,
+              }
+            : x,
+        ),
+      );
+      fitTargetRef.current = { id: routeId };
+      setSbfUi({ kind: 'msg', text: t.sbfImported(r.waypoints.length), error: false });
+      return true;
+    } catch (e) {
+      setSbfUi({ kind: 'msg', text: t.sbfFail(e instanceof Error ? e.message : String(e)), error: true });
+      return false;
+    }
+  };
+
+  const startSbf = (username: string) => {
+    const name = username.trim();
+    if (!name) {
+      setSbfUi({ kind: 'ask' });
+      return;
+    }
+    const route = routes.find((r) => r.id === selectedId);
+    if (!route || route.airports.length < 2) {
+      showSbfMsg(t.sbfNeedSelect, true);
+      return;
+    }
+    localStorage.setItem(SB_USER_KEY, name);
+    const orig = route.airports[0];
+    const dest = route.airports[route.airports.length - 1];
+    // 传 ICAO（官方跳转格式与 v2 后端均按 ICAO 示例），机型默认 A359
+    window.open(
+      simbriefDispatchUrl(orig.icao || orig.iata, dest.icao || dest.iata),
+      '_blank',
+      'noopener',
+    );
+    const codes = `${orig.iata || orig.icao} → ${dest.iata || dest.icao}`;
+    sbfBaselineRef.current = undefined;
+    setSbfUi({ kind: 'waiting', username: name, routeId: route.id, codes });
+    // 记下当前最新计划的签名作基线；轮询到不同签名才自动导入（重复生成同一条计划时用"立即导入"兜底）
+    fetchLatestOfp(name)
+      .then((r) => {
+        sbfBaselineRef.current = r.sig;
+      })
+      .catch(() => {
+        sbfBaselineRef.current = null;
+      });
+  };
+
+  const onSimbriefClick = () => {
+    const route = routes.find((r) => r.id === selectedId);
+    if (!route || route.airports.length < 2) {
+      showSbfMsg(t.sbfNeedSelect, true);
+      return;
+    }
+    const saved = localStorage.getItem(SB_USER_KEY);
+    if (saved) startSbf(saved);
+    else setSbfUi({ kind: 'ask' });
+  };
+
+  const importSbfNow = () => {
+    if (sbfUi.kind !== 'waiting') return;
+    void importSbf(sbfUi.username, sbfUi.routeId);
+  };
+
+  const cancelSbf = () => setSbfUi({ kind: 'idle' });
+
+  // 轮询一轮：签名与基线不同（或无基线）即自动导入
+  pollSbfRef.current = () => {
+    if (sbfUi.kind !== 'waiting' || sbfBusyRef.current) return;
+    sbfBusyRef.current = true;
+    const { username, routeId } = sbfUi;
+    fetchLatestOfp(username)
+      .then((r) => {
+        const base = sbfBaselineRef.current;
+        if (base === undefined) return; // 基线尚未确定，下一轮再比
+        if (base === null || r.sig !== base) return importSbf(username, routeId);
+      })
+      .catch(() => {
+        /* 轮询期间的暂时性错误忽略，等下一轮 */
+      })
+      .finally(() => {
+        sbfBusyRef.current = false;
+      });
+  };
+
+  // 等待期间：每 8s 轮询一次 + 窗口回到前台立即轮询
+  useEffect(() => {
+    if (sbfUi.kind !== 'waiting') return;
+    const timer = setInterval(() => pollSbfRef.current(), 8000);
+    const onFocus = () => pollSbfRef.current();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [sbfUi]);
+
+  // 直达链接 ?sbf=<用户名>：地图就绪后拉取最新 OFP 作为一条新航线
+  useEffect(() => {
+    if (!mapReady || !initial.sbf) return;
+    let cancelled = false;
+    fetchLatestOfp(initial.sbf)
+      .then((r) => {
+        if (cancelled) return;
+        const oa = findByCode(r.originIcao) ?? findByCode(r.originIata);
+        const da = findByCode(r.destIcao) ?? findByCode(r.destIata);
+        if (!oa || !da) return;
+        addRoutes([[oa, da]], { waypoints: r.waypoints, simbriefUser: initial.sbf });
+      })
+      .catch(() => {
+        /* 直达链接拉取失败：地图照常打开，不打断 */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
 
   const selected = routes.find((r) => r.id === selectedId) ?? null;
 
@@ -216,6 +409,16 @@ export default function App() {
           onAdd={addRoute}
           onAddMany={addRoutes}
           onUpdateSelected={editSelected}
+          sbf={{
+            ask: sbfUi.kind === 'ask',
+            waitingCodes: sbfUi.kind === 'waiting' ? sbfUi.codes : null,
+            msg: sbfUi.kind === 'msg' ? sbfUi.text : null,
+            msgError: sbfUi.kind === 'msg' && sbfUi.error,
+            onOpen: onSimbriefClick,
+            onConfirmUser: startSbf,
+            onCancel: cancelSbf,
+            onImportNow: importSbfNow,
+          }}
         />
         {routes.length > 0 && (
           <RouteList
@@ -230,7 +433,13 @@ export default function App() {
             t={t}
           />
         )}
-        <RouteSummary legs={selected ? legsMap[selected.id] ?? [] : []} units={units} onUnits={setUnits} t={t} />
+        <RouteSummary
+          legs={selected ? legsMap[selected.id] ?? [] : []}
+          route={selected}
+          units={units}
+          onUnits={setUnits}
+          t={t}
+        />
       </div>
       <button
         type="button"

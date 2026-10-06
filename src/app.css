@@ -655,6 +655,115 @@ body,
   z-index: 1;
 }
 
+/* ---------- SimBrief 真实航路 ---------- */
+.sb-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.sb-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(120, 120, 128, 0.1);
+  padding: 0 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1a1a18;
+  outline: none;
+  transition: background 0.15s;
+}
+
+.sb-input:focus {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 136, 255, 0.35);
+}
+
+.sb-go {
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: #0b7be8;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.sb-go:hover {
+  background: #0a6fd2;
+}
+
+.sb-mini {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(120, 120, 128, 0.14);
+  color: #54534e;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.sb-mini:hover {
+  background: rgba(120, 120, 128, 0.22);
+}
+
+.sb-status {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #6c6b66;
+  position: relative;
+  z-index: 1;
+}
+
+.sb-status-codes {
+  font-size: 12.5px;
+  color: #0b66c3;
+}
+
+.sb-status-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sb-msg {
+  margin-top: 9px;
+  font-size: 12px;
+  color: #0b66c3;
+  position: relative;
+  z-index: 1;
+}
+
+.real-note {
+  font-size: 11.5px;
+  color: #0b66c3;
+  margin: 2px 0 4px;
+  position: relative;
+  z-index: 1;
+}
+
 /* ---------- 航线摘要 ---------- */
 .summary-head {
   display: flex;

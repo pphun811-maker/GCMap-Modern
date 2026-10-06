@@ -13,6 +13,8 @@ GCMap Modern 是一个浏览器端的大圆航线地图工具。输入机场代�
 - **多航线管理：** 航线以列表管理，每条可独立控制显隐、颜色与线宽，新建航线自动分配配色。
 - **大圆几何：** 每段距离与初始航向、航线总距离、km/mi/nm 即时换算；跨日期变更线的航线
   连续绘制。
+- **SimBrief 真实航路：** 可把航线替换为真实飞行计划航路——应用带起降与机型（默认 A359）参数
+  打开 SimBrief 生成页，计划生成后自动导回，按实际航点绘制。需免费注册 SimBrief，无需 API key。
 - **双语地名：** 地图标注在中文与英文之间实时切换，也可整体隐藏。
 - **机场检索：** 内置 OurAirports 数据库共 8,799 个机场，支持 IATA/ICAO 代码或名称搜索。
 - **两种输入模式：** 标签流输入便于交互式编排；raw 文本模式可一次粘贴多条航线。
@@ -56,6 +58,8 @@ npm run preview  # 本地预览生产构建
 | 参数 | 取值 | 说明 |
 | ---- | ---- | ---- |
 | `route` | `LHR-SIN-SYD;PEK-JFK` | 机场代码用 `-` 连接（直飞或含经停），多条航线用 `;` 分隔 |
+| `sbr` | polyline 编码的航点序列 | 真实航路快照，每条一个；由应用自动写入，打开即恢复 |
+| `sbf` | SimBrief 用户名 | 打开时拉取该用户最新飞行计划，画成真实航路 |
 | `lang` | `zh`、`en` | 地名语言 |
 | `base` | `vector`、`satellite` | 底图模式 |
 | `u` | `km`、`mi`、`nm` | 距离单位 |
@@ -87,6 +91,7 @@ npm run build:airports
 │   ├── data/                   # airports.json（生成产物）与检索逻辑
 │   ├── geo/greatCircle.ts      # Haversine 距离、初始方位角、slerp 采样、单位换算
 │   ├── i18n/strings.ts         # 中/英文案
+│   ├── simbrief/simbrief.ts    # SimBrief 接入：生成页跳转、OFP 拉取解析、航路快照
 │   └── map/
 │       ├── styleFactory.ts     # 成品样式适配：图层分组、卫星层、地名标注
 │       ├── oceanTint.ts        # 卫星瓦片逐像素处理（海洋调色，自定义协议）
@@ -107,6 +112,8 @@ npm run build:airports
   (Contains Copernicus Data)），海洋配色在浏览器内处理；未配置 key 时回退 Esri World Imagery
   （Esri、Maxar、Earthstar Geographics）。
 - **机场数据库** — OurAirports.com（公有领域）。
+- **飞行计划数据** — [SimBrief](https://www.simbrief.com)（需免费注册）；真实航路来自用户
+  自己账号生成的飞行计划。
 - **字体** — Inter（SIL Open Font License）。
 
 ## 许可证

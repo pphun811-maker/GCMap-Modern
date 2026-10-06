@@ -1,21 +1,31 @@
-import type { LegInfo } from '../map/MapController';
-import { compassPoint, convertDistance, type Units } from '../geo/greatCircle';
+import type { LegInfo, RouteEntry } from '../map/MapController';
+import { compassPoint, convertDistance, haversineKm, type Units } from '../geo/greatCircle';
 import type { Strings } from '../i18n/strings';
 
 const UNIT_LABEL: Record<Units, string> = { km: 'km', mi: 'mi', nm: 'nm' };
 
 interface Props {
   legs: LegInfo[];
+  /** 当前选中的航线（存在 waypoints 时显示真实航路备注） */
+  route: RouteEntry | null;
   units: Units;
   onUnits: (u: Units) => void;
   t: Strings;
 }
 
-export function RouteSummary({ legs, units, onUnits, t }: Props) {
+export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
   if (legs.length === 0) return null;
   const totalKm = legs.reduce((s, l) => s + l.km, 0);
   const fmt = (km: number) =>
     Math.round(convertDistance(km, units)).toLocaleString('en-US');
+
+  const wpts = route?.waypoints;
+  let note: string | null = null;
+  if (wpts && wpts.length >= 2 && route && route.airports.length >= 2) {
+    const gcKm = haversineKm(route.airports[0], route.airports[route.airports.length - 1]);
+    const pct = gcKm > 0 ? Math.round(((totalKm - gcKm) / gcKm) * 100) : 0;
+    note = `${t.realRouteNote(wpts.length)} · +${pct}% ${t.vsDirect}`;
+  }
 
   return (
     <div className="card summary-card">
@@ -31,6 +41,7 @@ export function RouteSummary({ legs, units, onUnits, t }: Props) {
           ))}
         </div>
       </div>
+      {note && <div className="real-note">{note}</div>}
       {legs.map((l, i) => (
         <div className="leg-row" key={i}>
           <span className="leg-codes">

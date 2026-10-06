@@ -26,13 +26,24 @@ export interface LegInfo {
   bearing: number;
 }
 
-/** 一条航线：id 全会话稳定（React key + 地图图层命名），width 为默认粗细的倍率 */
+/** 真实航路的航点（SimBrief OFP 的 navlog fix，含起降机场） */
+export interface RouteWaypoint {
+  ident: string;
+  lat: number;
+  lon: number;
+}
+
+/** 一条航线：id 全会话稳定（React key + 地图图层命名），width 为默认粗细的倍率。
+ *  waypoints 存在时按航点序列画真实航路折线（airports 只用于 Pin 与 URL），否则画大圆弧 */
 export interface RouteEntry {
   id: string;
   airports: Airport[];
   visible: boolean;
   color: string;
   width: number;
+  waypoints?: RouteWaypoint[];
+  /** 导入该真实航路所用 SimBrief 用户名（URL sbf 参数的来源） */
+  simbriefUser?: string;
 }
 
 // 航线标签文字颜色跟随航线色；描边随底图模式（矢量=白晕，卫星=深晕），保证两种底图上都可读
@@ -228,29 +239,34 @@ export class MapController {
     const legs: LegInfo[] = [];
     const lineFeatures: any[] = [];
     const labelFeatures: any[] = [];
-    const unwrapped = unwrapSequence(e.airports.map((a) => ({ lon: a.lon, lat: a.lat })));
 
-    for (let i = 0; i < e.airports.length - 1; i++) {
-      const from = e.airports[i];
-      const to = e.airports[i + 1];
-      const km = haversineKm(unwrapped[i], unwrapped[i + 1]);
-      const bearing = initialBearing(unwrapped[i], unwrapped[i + 1]);
-      legs.push({ from, to, km, bearing });
+    if (e.waypoints && e.waypoints.length >= 2) {
+      this.renderWaypointRoute(e, legs, lineFeatures, labelFeatures, units, fmt);
+    } else {
+      const unwrapped = unwrapSequence(e.airports.map((a) => ({ lon: a.lon, lat: a.lat })));
 
-      const coords = greatCirclePoints(unwrapped[i], unwrapped[i + 1], 128);
-      lineFeatures.push({
-        type: 'Feature',
-        properties: { leg: i },
-        geometry: { type: 'LineString', coordinates: coords },
-      });
-      const mid = greatCircleMidpoint(unwrapped[i], unwrapped[i + 1]);
-      // 标签沿行进方向右侧垂直挪离航线（距离=段长的 6%），任何朝向/缩放下都不压线
-      const labelPos = destinationPoint(mid, (bearing + 90) % 360, km * 0.06);
-      labelFeatures.push({
-        type: 'Feature',
-        properties: { label: `${from.iata || from.icao} → ${to.iata || to.icao}\n${fmt(km, units)}` },
-        geometry: { type: 'Point', coordinates: [labelPos.lon, labelPos.lat] },
-      });
+      for (let i = 0; i < e.airports.length - 1; i++) {
+        const from = e.airports[i];
+        const to = e.airports[i + 1];
+        const km = haversineKm(unwrapped[i], unwrapped[i + 1]);
+        const bearing = initialBearing(unwrapped[i], unwrapped[i + 1]);
+        legs.push({ from, to, km, bearing });
+
+        const coords = greatCirclePoints(unwrapped[i], unwrapped[i + 1], 128);
+        lineFeatures.push({
+          type: 'Feature',
+          properties: { leg: i },
+          geometry: { type: 'LineString', coordinates: coords },
+        });
+        const mid = greatCircleMidpoint(unwrapped[i], unwrapped[i + 1]);
+        // 标签沿行进方向右侧垂直挪离航线（距离=段长的 6%），任何朝向/缩放下都不压线
+        const labelPos = destinationPoint(mid, (bearing + 90) % 360, km * 0.06);
+        labelFeatures.push({
+          type: 'Feature',
+          properties: { label: `${from.iata || from.icao} → ${to.iata || to.icao}\n${fmt(km, units)}` },
+          geometry: { type: 'Point', coordinates: [labelPos.lon, labelPos.lat] },
+        });
+      }
     }
 
     (this.map.getSource(srcLine) as GeoJSONSource).setData({
@@ -297,6 +313,49 @@ export class MapController {
     for (const m of rec.markers) m.getElement().style.display = e.visible ? '' : 'none';
 
     return legs;
+  }
+
+  /** 真实航路折线：整条一条 LineString，标签放在沿线 50% 处按局部航向右侧挪离（同大圆分支的 6% 规则） */
+  private renderWaypointRoute(
+    e: RouteEntry,
+    legs: LegInfo[],
+    lineFeatures: any[],
+    labelFeatures: any[],
+    units: Units,
+    fmt: (km: number, u: Units) => string,
+  ): void {
+    const wpts = unwrapSequence(e.waypoints!.map((w) => ({ lon: w.lon, lat: w.lat })));
+
+    let totalKm = 0;
+    const cum: number[] = [0];
+    for (let i = 1; i < wpts.length; i++) {
+      totalKm += haversineKm(wpts[i - 1], wpts[i]);
+      cum.push(totalKm);
+    }
+
+    lineFeatures.push({
+      type: 'Feature',
+      properties: { leg: 0 },
+      geometry: { type: 'LineString', coordinates: wpts.map((p) => [p.lon, p.lat]) },
+    });
+
+    const from = e.airports[0];
+    const to = e.airports[e.airports.length - 1];
+    const bearing = initialBearing(wpts[0], wpts[wpts.length - 1]);
+    legs.push({ from, to, km: totalKm, bearing });
+
+    // 沿线 50% 处：先定位所在段，再在段内按剩余距离插值
+    const half = totalKm / 2;
+    let seg = 0;
+    while (seg < cum.length - 2 && cum[seg + 1] < half) seg++;
+    const segBearing = initialBearing(wpts[seg], wpts[seg + 1]);
+    const onLine = destinationPoint(wpts[seg], segBearing, half - cum[seg]);
+    const labelPos = destinationPoint(onLine, (segBearing + 90) % 360, Math.max(totalKm * 0.06, 40));
+    labelFeatures.push({
+      type: 'Feature',
+      properties: { label: `${from.iata || from.icao} → ${to.iata || to.icao}\n${fmt(totalKm, units)}` },
+      geometry: { type: 'Point', coordinates: [labelPos.lon, labelPos.lat] },
+    });
   }
 
   private disposeRoute(id: string): void {

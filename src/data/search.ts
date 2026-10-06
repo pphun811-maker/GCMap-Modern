@@ -41,6 +41,24 @@ export function findByCode(code: string): Airport | undefined {
   return hits[0].a;
 }
 
+/** 按坐标找最近机场（真实航路快照恢复：航点序列首末应落在机场上），等距圆柱近似在 5km 阈值内足够 */
+export function findAirportNear(lat: number, lon: number, maxKm = 5): Airport | undefined {
+  let best: Airport | undefined;
+  let bestDkm = maxKm;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  for (const a of AIRPORTS) {
+    const dkm = Math.hypot(
+      (a.lat - lat) * 111.32,
+      (a.lon - lon) * 111.32 * cosLat,
+    );
+    if (dkm < bestDkm) {
+      bestDkm = dkm;
+      best = a;
+    }
+  }
+  return best;
+}
+
 export interface Suggestion {
   airport: Airport;
   score: number;

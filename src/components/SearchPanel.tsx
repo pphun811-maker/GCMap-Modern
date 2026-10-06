@@ -6,6 +6,19 @@ const SEG_SPLIT = /[-—>→,，;；]+/;
 // raw 模式里航线之间的分隔：半角逗号（全角/分号/换行也宽容接受）
 const RAW_SPLIT = /[\n,，;；]+/;
 
+/** SimBrief 真实航路导入的 UI 接线（状态与逻辑都在 App） */
+export interface SbfProps {
+  ask: boolean;
+  /** 等待导入中：值为目标航线代码（如 "LHR → SIN"），null = 非等待态 */
+  waitingCodes: string | null;
+  msg: string | null;
+  msgError: boolean;
+  onOpen: () => void;
+  onConfirmUser: (name: string) => void;
+  onCancel: () => void;
+  onImportNow: () => void;
+}
+
 interface Props {
   /** 当前选中航线（chips 展示与经停编辑的对象） */
   selected: Airport[];
@@ -15,10 +28,11 @@ interface Props {
   onAddMany: (groups: Airport[][]) => void;
   /** 选中航线的经停编辑（删除经停 / 反向） */
   onUpdateSelected: (airports: Airport[]) => void;
+  sbf: SbfProps;
   t: Strings;
 }
 
-export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, t }: Props) {
+export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf, t }: Props) {
   const [rawMode, setRawMode] = useState(false);
   const [tags, setTags] = useState<Airport[]>([]);
   const [text, setText] = useState('');
@@ -26,6 +40,8 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, t }:
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
+  const [sbName, setSbName] = useState('');
+  const sbInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const rawRef = useRef<HTMLTextAreaElement>(null);
 
@@ -43,6 +59,15 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, t }:
     if (rawMode) rawRef.current?.focus();
     else inputRef.current?.focus();
   }, [rawMode]);
+
+  useEffect(() => {
+    if (sbf.ask) sbInputRef.current?.focus();
+  }, [sbf.ask]);
+
+  const confirmSbfUser = () => {
+    sbf.onConfirmUser(sbName.trim());
+    setSbName('');
+  };
 
   const resolveSegment = (seg: string): Airport | undefined =>
     findByCode(seg) ?? searchAirports(seg, 1)[0];
@@ -266,6 +291,26 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, t }:
             </svg>
           </button>
         )}
+        {!rawMode && selected.length >= 2 && (
+          <button
+            className="chip-btn sb-btn"
+            title={t.simbriefTitle}
+            aria-label={t.simbriefTitle}
+            disabled={sbf.waitingCodes !== null}
+            onClick={sbf.onOpen}
+          >
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden>
+              <path
+                d="M18 2 8.5 11.5M18 2l-6.2 16-3.3-6.5L2 8.2z"
+                fill="none"
+                stroke="#5B5B57"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
       </div>
 
       {suggestions.length > 0 && (
@@ -296,12 +341,51 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, t }:
         </div>
       )}
 
+      {sbf.ask && (
+        <div className="sb-row">
+          <input
+            ref={sbInputRef}
+            className="sb-input"
+            value={sbName}
+            spellCheck={false}
+            placeholder={t.sbfAskLabel}
+            onChange={(e) => setSbName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') confirmSbfUser();
+              else if (e.key === 'Escape') sbf.onCancel();
+            }}
+          />
+          <button className="sb-go" onClick={confirmSbfUser}>
+            {t.sbfOpen}
+          </button>
+          <button className="sb-mini" onClick={sbf.onCancel}>
+            {t.sbfCancel}
+          </button>
+        </div>
+      )}
+
+      {sbf.waitingCodes !== null && (
+        <div className="sb-status">
+          <b className="sb-status-codes">{sbf.waitingCodes}</b>
+          <span>{t.sbfWaiting}</span>
+          <div className="sb-status-actions">
+            <button className="sb-go" onClick={sbf.onImportNow}>
+              {t.sbfImportNow}
+            </button>
+            <button className="sb-mini" onClick={sbf.onCancel}>
+              {t.sbfCancel}
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <div className="search-error">{error}</div>}
       {!error && (
         <div className="search-hint">
           {rawMode ? t.rawHint : selected.length ? t.commitHint : t.searchHint}
         </div>
       )}
+      {sbf.msg && <div className={sbf.msgError ? 'search-error' : 'sb-msg'}>{sbf.msg}</div>}
     </div>
   );
 }
