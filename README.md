@@ -12,6 +12,9 @@ English | [简体中文](README.zh-CN.md)
 - **Dual basemaps:** A vector basemap in an Apple Maps-inspired palette, with global landcover
   imagery underneath, terrain hillshade, and ground-use coloring; plus a satellite mode built on
   Stadia imagery with an in-browser per-pixel ocean tint. Place labels stay readable in both modes.
+- **3D globe:** At world zoom levels the map renders as a 3D globe floating in a starfield;
+  zooming in transitions smoothly back to the flat map, and a reset button restores the
+  north-up, level view at any time.
 - **Multiple routes:** Routes are managed in a list; each has independent visibility, color,
   and line width, and new routes are assigned colors automatically.
 - **Great-circle geometry:** Per-leg distance and initial bearing, route totals, and
@@ -26,8 +29,8 @@ English | [简体中文](README.zh-CN.md)
   code or by name.
 - **Two input modes:** A tag-flow input for interactive composition, and a raw-text mode that
   accepts several routes pasted at once.
-- **URL deep links:** Routes, language, basemap, unit, and label visibility are all encoded in
-  the URL and restored on load.
+- **URL deep links:** Routes, language, basemap, projection, unit, and label visibility are all
+  encoded in the URL and restored on load.
 
 ## Getting started
 
@@ -72,6 +75,7 @@ Application state can be preset through query parameters; the URL is kept in syn
 | `sbf`     | SimBrief username | On load, imports that user's latest flight plan as a real route |
 | `lang`    | `zh`, `en` | Place-label language |
 | `base`    | `vector`, `satellite` | Basemap mode |
+| `globe`   | `1` | `1` renders the map as a 3D globe at low zoom; omit for the flat map |
 | `u`       | `km`, `mi`, `nm` | Distance unit |
 | `labels`  | `0` | `0` hides place labels; omit to show them |
 

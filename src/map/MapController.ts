@@ -1,6 +1,5 @@
-// 地图引擎封装：底图切换 / 标注语言与显隐 / 多航线渲染 / 机场 Pin / 视野适配
-// v2 预留：globe 投影与 3D 地形只需在此增加 setProjection({type:'globe'}) 与 setTerrain(dem)，
-// 业务层（航线数据、UI）不感知引擎实现。
+// 地图引擎封装：底图切换 / 3D 地球投影 / 标注语言与显隐 / 多航线渲染 / 机场 Pin / 视野适配
+// v2 预留：3D 地形只需在此增加 setTerrain(dem)，业务层（航线数据、UI）不感知引擎实现。
 
 import {
   Map as MLMap,
@@ -11,7 +10,7 @@ import {
   type GeoJSONSource,
   type StyleSpecification,
 } from 'maplibre-gl';
-import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, STADIA_KEY, type BaseMode, type LabelLanguage } from './styleFactory';
+import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, STADIA_KEY, GLOBE_SKY, FLAT_SKY, type BaseMode, type LabelLanguage } from './styleFactory';
 import { ensureProtocol } from './oceanTint';
 import type { Airport } from '../data/search';
 import {
@@ -66,13 +65,13 @@ export class MapController {
   private routeLabelLayers = new Set<string>();
   private currentBase: BaseMode;
 
-  constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode) {
+  constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false) {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议
     ensureProtocol(() => STADIA_KEY);
     this.currentBase = base;
     this.map = new MLMap({
       container,
-      style: buildStyle(lang, base),
+      style: buildStyle(lang, base, globe),
       center: [110, 33],
       zoom: 3,
       attributionControl: false,
@@ -133,6 +132,22 @@ export class MapController {
         /* 同上 */
       }
     }
+  }
+
+  /** 3D 地球投影：globe=低缩放渲染为球体（放大后 maplibre 自动回落 mercator），mercator=常规平面。
+   *  sky 随投影切换：球体=深空+大气，平面=全透明（杜绝俯仰时出雾色） */
+  setGlobe(on: boolean): void {
+    try {
+      this.map.setProjection({ type: on ? 'globe' : 'mercator' });
+      this.map.setSky(on ? (GLOBE_SKY as any) : (FLAT_SKY as any));
+    } catch (e) {
+      console.warn('[MapController] setProjection failed', e);
+    }
+  }
+
+  /** 视角回正：正北朝向 + 俯仰归零（中心与缩放不变） */
+  resetView(): void {
+    this.map.easeTo({ bearing: 0, pitch: 0, duration: 650 });
   }
 
   /** 切换地图标注语言（逐层替换 text-field 表达式） */

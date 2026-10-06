@@ -30,6 +30,25 @@ const STADIA_ATTRIBUTION =
 const SAT_TEXT_COLOR = '#FFFFFF';
 const SAT_TEXT_HALO = 'rgba(0,0,0,0.55)';
 
+// 3D 地球的太空底色与大气辉光（sky-color 透明：深空与星星做在 .map-root 的 CSS 背景上，
+// 大气辉光若有渲染则叠加在星空之上；fog 全透明，杜绝平面模式俯仰时出雾色）
+export const GLOBE_SKY = {
+  'sky-color': 'rgba(2,4,12,0)',
+  'sky-horizon-blend': 0.6,
+  'horizon-color': '#4a7ab5',
+  'horizon-fog-blend': 0.5,
+  'fog-color': 'rgba(0,0,0,0)',
+  'fog-ground-blend': 0,
+  'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 6, 0.8, 9, 0] as any,
+};
+export const FLAT_SKY = {
+  'sky-color': 'rgba(0,0,0,0)',
+  'horizon-color': 'rgba(0,0,0,0)',
+  'fog-color': 'rgba(0,0,0,0)',
+  'fog-ground-blend': 0,
+  'atmosphere-blend': 0,
+};
+
 // icon-only / ref 徽章类 symbol：属于路网表面元素，随 base 组隐藏，不参与语言切换与配色
 const BASE_GROUP_SYMBOLS = new Set([
   'road_one_way_arrow',
@@ -55,9 +74,15 @@ function isNameLabel(textField: unknown): boolean {
 // 各标注层矢量模式配色（卫星切白后恢复用；每次 buildStyle 重建）
 const LABEL_PAINT_DEFAULTS: Record<string, { color: string; halo: string }> = {};
 
-export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vector'): StyleSpecification {
+export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vector', globe = false): StyleSpecification {
   const style = JSON.parse(appleLandcoverRaw) as any;
   for (const k of Object.keys(LABEL_PAINT_DEFAULTS)) delete LABEL_PAINT_DEFAULTS[k];
+
+  // 3D 地球（?globe=1 直开时内置，避免首帧"先平后球"跳变；运行时切换走 MapController.setGlobe）
+  if (globe) {
+    style.projection = { type: 'globe' };
+    style.sky = { ...GLOBE_SKY };
+  }
 
   // 绿毯整图改走 Vite 资产 URL（JSON 里的 ../demo/tiles 相对路径在应用里不存在）
   style.sources['global-landcover-img'].url = globalLcUrl;

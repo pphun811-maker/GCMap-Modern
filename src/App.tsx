@@ -23,6 +23,7 @@ interface UrlState {
   base: BaseMode;
   units: Units;
   labels: boolean;
+  globe: boolean;
   sbf: string;
 }
 
@@ -81,6 +82,7 @@ function parseUrl(): UrlState {
     base: q.get('base') === 'satellite' ? 'satellite' : 'vector',
     units: q.get('u') === 'mi' || q.get('u') === 'nm' ? (q.get('u') as Units) : 'km',
     labels: q.get('labels') !== '0',
+    globe: q.get('globe') === '1',
     sbf: q.get('sbf') ?? '',
   };
 }
@@ -102,6 +104,7 @@ export default function App() {
     initial.routes.length ? initial.routes[initial.routes.length - 1].id : null,
   );
   const [labelsOn, setLabelsOn] = useState(initial.labels);
+  const [globeOn, setGlobeOn] = useState(initial.globe);
   const [legsMap, setLegsMap] = useState<Record<string, LegInfo[]>>({});
   const [panelOpen, setPanelOpen] = useState(true);
   const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
@@ -126,7 +129,7 @@ export default function App() {
   // 地图初始化（仅一次）
   useEffect(() => {
     if (!mapDivRef.current) return;
-    const controller = new MapController(mapDivRef.current, initial.lang as LabelLanguage, initial.base);
+    const controller = new MapController(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe);
     controllerRef.current = controller;
     controller.onReady(() => {
       readyRef.current = true;
@@ -187,6 +190,11 @@ export default function App() {
     if (readyRef.current) controllerRef.current?.setLabelsVisible(labelsOn);
   }, [labelsOn]);
 
+  // 3D 地球投影（初始值已在 buildStyle 内置，运行时切换走 setProjection）
+  useEffect(() => {
+    if (readyRef.current) controllerRef.current?.setGlobe(globeOn);
+  }, [globeOn]);
+
   // URL 同步（replaceState，不产生历史记录）
   useEffect(() => {
     const q = new URLSearchParams();
@@ -202,11 +210,12 @@ export default function App() {
     }
     if (lang !== 'zh') q.set('lang', lang);
     if (base !== 'vector') q.set('base', base);
+    if (globeOn) q.set('globe', '1');
     if (units !== 'km') q.set('u', units);
     if (!labelsOn) q.set('labels', '0');
     const qs = q.toString();
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
-  }, [routes, lang, base, units, labelsOn]);
+  }, [routes, lang, base, units, labelsOn, globeOn]);
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
@@ -463,6 +472,9 @@ export default function App() {
       <TopRightControls
         base={base}
         onBase={setBase}
+        globeOn={globeOn}
+        onGlobe={setGlobeOn}
+        onReset={() => controllerRef.current?.resetView()}
         lang={lang}
         onLang={setLang}
         labelsOn={labelsOn}

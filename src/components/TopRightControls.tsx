@@ -4,6 +4,9 @@ import type { Lang, Strings } from '../i18n/strings';
 interface Props {
   base: BaseMode;
   onBase: (m: BaseMode) => void;
+  globeOn: boolean;
+  onGlobe: (v: boolean) => void;
+  onReset: () => void;
   lang: Lang;
   onLang: (l: Lang) => void;
   labelsOn: boolean;
@@ -11,7 +14,7 @@ interface Props {
   t: Strings;
 }
 
-export function TopRightControls({ base, onBase, lang, onLang, labelsOn, onLabels, t }: Props) {
+export function TopRightControls({ base, onBase, globeOn, onGlobe, onReset, lang, onLang, labelsOn, onLabels, t }: Props) {
   return (
     <div className="map-controls">
       <div className="seg">
@@ -20,6 +23,19 @@ export function TopRightControls({ base, onBase, lang, onLang, labelsOn, onLabel
         </button>
         <button className={base === 'satellite' ? 'active' : ''} onClick={() => onBase('satellite')}>
           {t.satellite}
+        </button>
+      </div>
+      <div className="seg">
+        <button
+          className={globeOn ? 'active' : ''}
+          aria-pressed={globeOn}
+          title={t.globeTip}
+          onClick={() => onGlobe(!globeOn)}
+        >
+          {t.globe}
+        </button>
+        <button title={t.resetViewTip} onClick={onReset}>
+          {t.resetView}
         </button>
       </div>
       <div className="seg">
