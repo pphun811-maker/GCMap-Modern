@@ -20,6 +20,12 @@ export type BaseMode = 'vector' | 'satellite';
 const ESRI_IMAGERY =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
+// 卫星影像：Stadia 纯影像（EU 端点，美西端点不通），瓦片走 gcimg:// 协议经 oceanTint 逐像素海洋调色。
+// key 绝不入库（公开仓库合规）：读 .env.local 的 VITE_STADIA_KEY；取不到回退免 key 的 Esri World Imagery。
+export const STADIA_KEY = ((import.meta.env.VITE_STADIA_KEY as string | undefined) ?? '').trim();
+const STADIA_ATTRIBUTION =
+  '© CNES, Distribution Airbus DS, © Airbus DS, © PlanetObserver (Contains Copernicus Data) | © Stadia Maps';
+
 // 卫星模式的标注配色（白字 + 半透明深晕；白 halo 在影像上是突兀白边，深字又看不清）
 const SAT_TEXT_COLOR = '#FFFFFF';
 const SAT_TEXT_HALO = 'rgba(0,0,0,0.55)';
@@ -82,18 +88,26 @@ export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vect
   style.layers.splice(1, 0, {
     id: 'satellite',
     type: 'raster',
-    source: 'esri-imagery',
+    source: 'satellite-imagery',
     metadata: { group: 'satellite' },
     layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
     paint: { 'raster-opacity': 1 },
   });
-  style.sources['esri-imagery'] = {
-    type: 'raster',
-    tiles: [ESRI_IMAGERY],
-    tileSize: 256,
-    maxzoom: 19,
-    attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
-  };
+  style.sources['satellite-imagery'] = STADIA_KEY
+    ? {
+        type: 'raster',
+        tiles: ['gcimg://{z}/{x}/{y}'],
+        tileSize: 512,
+        maxzoom: 18,
+        attribution: STADIA_ATTRIBUTION,
+      }
+    : {
+        type: 'raster',
+        tiles: [ESRI_IMAGERY],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+      };
 
   return style as unknown as StyleSpecification;
 }

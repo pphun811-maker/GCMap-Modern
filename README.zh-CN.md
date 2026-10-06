@@ -9,7 +9,7 @@ GCMap Modern 是一个浏览器端的大圆航线地图工具。输入机场代�
 ## 功能
 
 - **双底图：** Apple 配色的矢量底图，全球地表覆盖影像垫底，带地形晕染与地表/土地利用
-  色块；另有 Esri World Imagery 卫星影像模式。两种模式下地名标注均保持可读。
+  色块；另有卫星影像模式（Stadia 影像 + 浏览器内逐像素海洋调色）。两种模式下地名标注均保持可读。
 - **多航线管理：** 航线以列表管理，每条可独立控制显隐、颜色与线宽，新建航线自动分配配色。
 - **大圆几何：** 每段距离与初始航向、航线总距离、km/mi/nm 即时换算；跨日期变更线的航线
   连续绘制。
@@ -28,6 +28,19 @@ npm run dev
 ```
 
 开发服务器运行于 http://127.0.0.1:5173。
+
+### 可选：Stadia 卫星影像
+
+卫星底图使用 Stadia Maps 影像，海洋配色在浏览器内逐像素处理。激活方式：在
+[Stadia Maps](https://client.stadiamaps.com/signup/) 注册领取免费 API key，在项目根目录创建
+`.env.local` 文件并写入
+
+```
+VITE_STADIA_KEY=你的key
+```
+
+然后重启开发服务器（或重新构建）。没有 key 时自动回退到免 key 的 Esri World Imagery，
+新检出开箱即用。key 仅存本地（`.env*` 已被 gitignore），绝不提交。
 
 生产构建：
 
@@ -76,6 +89,7 @@ npm run build:airports
 │   ├── i18n/strings.ts         # 中/英文案
 │   └── map/
 │       ├── styleFactory.ts     # 成品样式适配：图层分组、卫星层、地名标注
+│       ├── oceanTint.ts        # 卫星瓦片逐像素处理（海洋调色，自定义协议）
 │       └── MapController.ts    # MapLibre 封装：图层、标记、底图切换
 ├── design-assets/              # 构建所需的成品样式与地表覆盖资产
 └── scripts/build-airports.mjs  # OurAirports CSV -> src/data/airports.json
@@ -89,7 +103,9 @@ npm run build:airports
 - **矢量底图样式** — 本项目生成；地表覆盖与土地利用配色源自 OSM Carto（CC0）。
 - **地表覆盖影像** — NASA EOSDIS GIBS，本项目重新配色。
 - **地形晕染** — AWS Open Data Terrain Tiles（Mapzen）。
-- **卫星影像** — Esri World Imagery（Esri、Maxar、Earthstar Geographics）。
+- **卫星影像** — Stadia Maps（© CNES, Distribution Airbus DS, © Airbus DS, © PlanetObserver
+  (Contains Copernicus Data)），海洋配色在浏览器内处理；未配置 key 时回退 Esri World Imagery
+  （Esri、Maxar、Earthstar Geographics）。
 - **机场数据库** — OurAirports.com（公有领域）。
 - **字体** — Inter（SIL Open Font License）。
 

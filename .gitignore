@@ -7,6 +7,10 @@ tsconfig.tsbuildinfo
 
 # Local tooling state
 .zcode/
+.workbuddy/
+
+# Local env files (API keys, e.g. VITE_STADIA_KEY) — never commit
+.env*
 
 # Airport data source: download from https://ourairports.com/data/ (see README).
 # The generated src/data/airports.json is committed.

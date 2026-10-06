@@ -11,7 +11,8 @@ import {
   type GeoJSONSource,
   type StyleSpecification,
 } from 'maplibre-gl';
-import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, type BaseMode, type LabelLanguage } from './styleFactory';
+import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, STADIA_KEY, type BaseMode, type LabelLanguage } from './styleFactory';
+import { ensureProtocol } from './oceanTint';
 import type { Airport } from '../data/search';
 import {
   greatCirclePoints, greatCircleMidpoint, haversineKm, initialBearing,
@@ -55,6 +56,8 @@ export class MapController {
   private currentBase: BaseMode;
 
   constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode) {
+    // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议
+    ensureProtocol(() => STADIA_KEY);
     this.currentBase = base;
     this.map = new MLMap({
       container,

@@ -10,8 +10,8 @@ English | [简体中文](README.zh-CN.md)
 ## Features
 
 - **Dual basemaps:** A vector basemap in an Apple Maps-inspired palette, with global landcover
-  imagery underneath, terrain hillshade, and ground-use coloring; plus an Esri World Imagery
-  satellite mode. Place labels stay readable in both modes.
+  imagery underneath, terrain hillshade, and ground-use coloring; plus a satellite mode built on
+  Stadia imagery with an in-browser per-pixel ocean tint. Place labels stay readable in both modes.
 - **Multiple routes:** Routes are managed in a list; each has independent visibility, color,
   and line width, and new routes are assigned colors automatically.
 - **Great-circle geometry:** Per-leg distance and initial bearing, route totals, and
@@ -35,6 +35,20 @@ npm run dev
 ```
 
 The development server runs at http://127.0.0.1:5173.
+
+### Optional: Stadia satellite imagery
+
+The satellite basemap uses Stadia Maps imagery with an ocean tint applied per pixel in the
+browser. To activate it, grab a free API key at [client.stadiamaps.com](https://client.stadiamaps.com/signup/),
+create a `.env.local` file in the project root, and add:
+
+```
+VITE_STADIA_KEY=your-key-here
+```
+
+Then restart the dev server (or rebuild). Without a key the application falls back to key-free
+Esri World Imagery, so a fresh checkout works out of the box. The key stays local and is never
+committed (`.env*` is gitignored).
 
 For a production build:
 
@@ -84,6 +98,7 @@ npm run build:airports
 │   ├── i18n/strings.ts         # zh/en UI strings
 │   └── map/
 │       ├── styleFactory.ts     # adapts the generated style: layer groups, satellite layer, labels
+│       ├── oceanTint.ts        # per-pixel satellite tile processing (ocean tint) via a custom protocol
 │       └── MapController.ts    # MapLibre wrapper: layers, markers, basemap switching
 ├── design-assets/              # generated style and landcover assets consumed by the build
 └── scripts/build-airports.mjs  # OurAirports CSV -> src/data/airports.json
@@ -100,7 +115,9 @@ of the map carries these credits; per the respective licenses, it must not be re
   derived from OSM Carto (CC0).
 - **Land cover base imagery** — NASA EOSDIS GIBS, restyled for this project.
 - **Terrain hillshade** — AWS Open Data Terrain Tiles (Mapzen).
-- **Satellite imagery** — Esri World Imagery (Esri, Maxar, Earthstar Geographics).
+- **Satellite imagery** — Stadia Maps (© CNES, Distribution Airbus DS, © Airbus DS, ©
+  PlanetObserver — Contains Copernicus Data); the ocean tint is applied in-browser. Without an
+  API key the app falls back to Esri World Imagery (Esri, Maxar, Earthstar Geographics).
 - **Airport database** — OurAirports.com (public domain).
 - **Typeface** — Inter (SIL Open Font License).
 
