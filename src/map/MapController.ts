@@ -45,11 +45,8 @@ export interface RouteEntry {
   simbriefUser?: string;
 }
 
-// 航线标签文字颜色跟随航线色；描边随底图模式（矢量=白晕，卫星=深晕），保证两种底图上都可读
-const ROUTE_LABEL_HALO = {
-  vector: '#FFFFFF',
-  satellite: 'rgba(0,0,0,0.55)',
-} as const;
+// 航线标签文字颜色跟随航线色；描边恒为白晕（矢量/卫星一致），保证两种底图上都可读
+const ROUTE_LABEL_HALO = '#FFFFFF';
 
 // 视野适配统一留白（左侧给面板留位）
 const FIT_PAD = { top: 110, bottom: 130, left: 460, right: 150 };
@@ -63,12 +60,10 @@ export class MapController {
   map: MLMap;
   private routes = new Map<string, RouteRecord>();
   private routeLabelLayers = new Set<string>();
-  private currentBase: BaseMode;
 
   constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false) {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议
     ensureProtocol(() => STADIA_KEY);
-    this.currentBase = base;
     this.map = new MLMap({
       container,
       style: buildStyle(lang, base, globe),
@@ -106,7 +101,6 @@ export class MapController {
     if (!layers) return;
     // 注意：样式里的组名是 base/satellite，对外模式值是 vector/satellite
     const targetGroup = mode === 'satellite' ? 'satellite' : 'base';
-    this.currentBase = mode;
     for (const l of layers) {
       const g = l.metadata?.group as string | undefined;
       if (!g || g === 'labels') continue;
@@ -127,7 +121,7 @@ export class MapController {
     }
     for (const id of this.routeLabelLayers) {
       try {
-        this.map.setPaintProperty(id, 'text-halo-color', ROUTE_LABEL_HALO[mode]);
+        this.map.setPaintProperty(id, 'text-halo-color', ROUTE_LABEL_HALO);
       } catch {
         /* 同上 */
       }
@@ -230,7 +224,7 @@ export class MapController {
           },
           paint: {
             'text-color': e.color,
-            'text-halo-color': ROUTE_LABEL_HALO[this.currentBase],
+            'text-halo-color': ROUTE_LABEL_HALO,
             'text-halo-width': 1.8,
             'text-halo-blur': 0.4,
           },
