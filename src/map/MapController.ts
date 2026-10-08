@@ -6,11 +6,10 @@ import {
   Marker,
   NavigationControl,
   AttributionControl,
-  ScaleControl,
   type GeoJSONSource,
   type StyleSpecification,
 } from 'maplibre-gl';
-import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, STADIA_KEY, GLOBE_SKY, FLAT_SKY, type BaseMode, type LabelLanguage } from './styleFactory';
+import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, nameExpr, STADIA_KEY, GLOBE_SKY, FLAT_SKY, type BaseMode, type LabelLanguage } from './styleFactory';
 import { ensureProtocol } from './oceanTint';
 import type { Airport } from '../data/search';
 import {
@@ -79,7 +78,7 @@ export class MapController {
       'bottom-right',
     );
     this.map.addControl(new NavigationControl({ showCompass: false }), 'bottom-right');
-    this.map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
+    // 比例尺已按用户要求移除（左下角只留品牌水印）
     if (import.meta.env.DEV) {
       (window as any).__map = this.map;
       (window as any).__mapErrors = [];
@@ -148,9 +147,7 @@ export class MapController {
   setLabelsLanguage(lang: LabelLanguage): void {
     const style = this.map.getStyle() as StyleSpecification | undefined;
     if (!style?.layers) return; // 样式未加载完成：初始语言已在构造时内置，后续切换在 ready 后调用
-    const expr = lang === 'zh'
-      ? ['coalesce', ['get', 'name:zh-Hans'], ['get', 'name:zh'], ['get', 'name_en'], ['get', 'name']]
-      : ['coalesce', ['get', 'name_en'], ['get', 'name']];
+    const expr = nameExpr(lang); // 与 buildStyle 共用同一表达式（含 name_en 截断守卫）
     for (const id of labelLayerIds(style)) {
       try {
         this.map.setLayoutProperty(id, 'text-field', expr as any);
@@ -225,8 +222,9 @@ export class MapController {
           paint: {
             'text-color': e.color,
             'text-halo-color': ROUTE_LABEL_HALO,
-            'text-halo-width': 1.8,
-            'text-halo-blur': 0.4,
+            // 描边细化过一轮：1.8 + 0.4 模糊在 11px 字上显得很厚（2026-10-08 用户要求打薄）
+            'text-halo-width': 1.1,
+            'text-halo-blur': 0.25,
           },
         },
         beforeId,

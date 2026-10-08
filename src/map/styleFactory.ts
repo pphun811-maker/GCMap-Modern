@@ -58,12 +58,26 @@ const BASE_GROUP_SYMBOLS = new Set([
   'road_shield_us',
 ]);
 
-/** 地名取值表达式：zh 优先简体字段，latin 用英文名（OpenFreeMap 瓦片字段已实测支持） */
-function nameExpr(lang: LabelLanguage): any {
+/** 受守卫的英文名子表达式：只有 name_en 存在且长度 > 1 时才采用，否则退回 name:latin → name。
+ *  原因（已实测瓦片确认）：上游把 Türkiye 的 name_en 截断成单字符 "T"，直接 coalesce(name_en, name)
+ *  会让英文模式下的国名只剩一个字母。name:latin 在该国是完好的 "Türkiye"。
+ *  ⚠ `has` 守卫必须留：name_en 缺失时 length 会拿到 null 而报错，all 短路后再取长度才不会污染错误通道。 */
+function latinName(): any {
+  return [
+    'case',
+    ['all', ['has', 'name_en'], ['>', ['length', ['to-string', ['get', 'name_en']]], 1]],
+    ['get', 'name_en'],
+    ['get', 'name:latin'],
+  ];
+}
+
+/** 地名取值表达式：zh 优先简体字段，latin 用英文名（OpenFreeMap 瓦片字段已实测支持）。
+ *  外层 to-string 包一层：无 name 的要素（部分无名 waterway）求值结果保持空串而不是 null。 */
+export function nameExpr(lang: LabelLanguage): any {
   if (lang === 'zh') {
-    return ['coalesce', ['get', 'name:zh-Hans'], ['get', 'name:zh'], ['get', 'name_en'], ['get', 'name']];
+    return ['to-string', ['coalesce', ['get', 'name:zh-Hans'], ['get', 'name:zh'], latinName(), ['get', 'name']]];
   }
-  return ['coalesce', ['get', 'name_en'], ['get', 'name']];
+  return ['to-string', ['coalesce', latinName(), ['get', 'name']]];
 }
 
 /** text-field 是否取自 name 类字段（ref 徽章 / 纯图标层不算） */

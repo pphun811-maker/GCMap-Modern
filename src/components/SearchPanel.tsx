@@ -17,10 +17,12 @@ export interface SbfProps {
   onConfirmUser: (name: string) => void;
   onCancel: () => void;
   onImportNow: () => void;
+  /** 关闭导入结果提示（消息右上角的小 ×） */
+  onDismissMsg: () => void;
 }
 
 interface Props {
-  /** 当前选中航线（chips 展示与经停编辑的对象） */
+  /** 当前选中航线（⇄ 反向作用的对象） */
   selected: Airport[];
   /** 标签 ≥2 且输入为空时回车 → 创建一条航线 */
   onAdd: (airports: Airport[]) => void;
@@ -212,10 +214,6 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
     setOpen(false);
   };
 
-  const removeStop = (idx: number) => {
-    onUpdateSelected(selected.filter((_, i) => i !== idx));
-  };
-
   const swap = () => {
     onUpdateSelected([...selected].reverse());
   };
@@ -329,18 +327,6 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
         </div>
       )}
 
-      {selected.length > 0 && (
-        <div className="chips">
-          {selected.map((a, i) => (
-            <span className="chip" key={`${a.iata}-${i}`}>
-              <b>{a.iata || a.icao}</b>
-              {i < selected.length - 1 && <span className="chip-arrow">→</span>}
-              <button className="chip-x" onClick={() => removeStop(i)} aria-label="remove">×</button>
-            </span>
-          ))}
-        </div>
-      )}
-
       {sbf.ask && (
         <div className="sb-row">
           <input
@@ -385,7 +371,20 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
           {rawMode ? t.rawHint : selected.length ? t.commitHint : t.searchHint}
         </div>
       )}
-      {sbf.msg && <div className={sbf.msgError ? 'search-error' : 'sb-msg'}>{sbf.msg}</div>}
+      {sbf.msg && (
+        <div className={`sb-msg${sbf.msgError ? ' error' : ''}`}>
+          <span className="sb-msg-text">{sbf.msg}</span>
+          <button
+            type="button"
+            className="sb-msg-x"
+            title={t.close}
+            aria-label={t.close}
+            onClick={sbf.onDismissMsg}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

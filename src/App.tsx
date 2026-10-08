@@ -261,8 +261,8 @@ export default function App() {
     fitTargetRef.current = { all: true };
   };
 
-  // 选中航线的经停编辑（chips 删除 / 反向）；删到没有经停时整条删除。
-  // 经停一旦编辑，原真实航路折线不再成立，回退为大圆弧
+  // 选中航线的经停更新（当前唯一入口是搜索行的 ⇄ 反向钮；空数组=整条删除，防御保留）。
+  // 经停一旦变动，原真实航路折线不再成立，回退为大圆弧
   const editSelected = (airports: Airport[]) => {
     if (!selectedId) return;
     if (!airports.length) {
@@ -352,6 +352,7 @@ export default function App() {
     void importSbf(sbfUi.username, sbfUi.routeId);
   };
 
+  // 回到空闲态：取消等待/输入，或关掉导入结果提示（消息右上角的小 ×）
   const cancelSbf = () => setSbfUi({ kind: 'idle' });
 
   // 轮询一轮：签名与基线不同（或无基线）即自动导入
@@ -427,6 +428,7 @@ export default function App() {
             onConfirmUser: startSbf,
             onCancel: cancelSbf,
             onImportNow: importSbfNow,
+            onDismissMsg: cancelSbf,
           }}
         />
         {routes.length > 0 && (

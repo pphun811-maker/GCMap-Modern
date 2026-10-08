@@ -611,57 +611,6 @@ body,
   font-size: 11.5px;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-  position: relative;
-  z-index: 1;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 999px;
-  padding: 3px 6px 3px 9px;
-  font-size: 12.5px;
-}
-
-.chip b {
-  color: #1a1a18;
-  font-weight: 700;
-}
-
-.chip-arrow {
-  color: #9a9890;
-  padding-right: 2px;
-}
-
-.chip-x {
-  border: none;
-  background: rgba(120, 120, 128, 0.14);
-  color: #6c6b66;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.chip-x:hover {
-  background: rgba(255, 59, 48, 0.16);
-  color: #d73730;
-}
-
 .search-hint {
   margin-top: 9px;
   font-size: 11.5px;
@@ -771,12 +720,52 @@ body,
   gap: 6px;
 }
 
+/* SimBrief 导入结果提示：可关闭（右侧小 × 回到 idle） */
 .sb-msg {
   margin-top: 9px;
   font-size: 12px;
   color: #0b66c3;
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.sb-msg.error {
+  color: #d73730;
+}
+
+.sb-msg-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sb-msg-x {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-top: -1px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(120, 120, 128, 0.14);
+  color: #6c6b66;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sb-msg-x:hover {
+  background: rgba(120, 120, 128, 0.28);
+  color: #33332e;
 }
 
 .real-note {
@@ -895,20 +884,24 @@ body,
   font-size: 11.5px;
 }
 
-/* ---------- 品牌 ---------- */
+/* ---------- 品牌（左下角水印；白边保证两种底图下都可读） ---------- */
 .brand {
   position: absolute;
-  bottom: 12px;
+  bottom: 14px;
   left: 16px;
   z-index: 1000;
+  pointer-events: none;
 }
 
 .brand-name {
   font-size: 13px;
   font-weight: 700;
-  color: rgba(60, 60, 55, 0.85);
+  color: #33332e;
   letter-spacing: 0.02em;
-  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.8);
+  /* 白边：paint-order 让描边画在字面之下，笔画不被描边吃掉（不支持时只是笔画略细）；2px=两侧各 1px */
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.92);
+  paint-order: stroke fill;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
 }
 
 /* ---------- 机场 Pin（航线色圆点 + 光晕 + 标签；--pin-color 由每条航线写入） ---------- */
@@ -1000,12 +993,6 @@ body,
   border-radius: 12px !important;
   overflow: hidden;
   box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12) !important;
-}
-
-.maplibregl-ctrl-scale {
-  background: rgba(255, 255, 255, 0.65);
-  border-radius: 4px;
-  font-size: 10.5px;
 }
 
 /* ---------- 响应式 ---------- */
