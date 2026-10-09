@@ -309,7 +309,9 @@ export class MapController {
           <div class="ap-pin-label"><b>${code}</b><span>${a.city || a.name}</span></div>
           ${e.airports.length > 2 ? `<div class="ap-pin-index">${idx + 1}</div>` : ''}`;
         el.style.setProperty('--pin-color', e.color);
-        const marker = new Marker({ element: el, anchor: 'center' })
+        // globe 模式下球体背面的 Pin 会被 maplibre 套 opacityWhenCovered（默认 0.2 → 半透明幽灵
+        // 标志透出球面），置 0 让背面完全隐藏；mercator 下 isLocationOccluded 恒 false，无副作用
+        const marker = new Marker({ element: el, anchor: 'center', opacityWhenCovered: 0 })
           .setLngLat([a.lon, a.lat])
           .addTo(this.map);
         rec!.markers.push(marker);
