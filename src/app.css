@@ -23,29 +23,10 @@ body,
 .map-root {
   position: absolute;
   inset: 0;
-  /* 3D 地球太空背景：globe 模式下画布球外区域全透明，深空渐变与星星从这里透出
-     （mercator 模式瓦片满屏覆盖，背景不可见）；星星用不同 background-size 的重复
-     渐变叠出，避免可察觉的平铺周期 */
-  background-color: #03050d;
-  background-image:
-    radial-gradient(1px 1px at 11% 31%, rgba(255, 255, 255, 0.85) 40%, transparent 60%),
-    radial-gradient(1.2px 1.2px at 43% 72%, rgba(255, 255, 255, 0.6) 40%, transparent 60%),
-    radial-gradient(0.8px 0.8px at 64% 13%, rgba(188, 212, 255, 0.75) 40%, transparent 60%),
-    radial-gradient(1.5px 1.5px at 84% 47%, rgba(255, 233, 196, 0.55) 40%, transparent 60%),
-    radial-gradient(1px 1px at 27% 87%, rgba(255, 255, 255, 0.5) 40%, transparent 60%),
-    radial-gradient(0.9px 0.9px at 72% 64%, rgba(200, 224, 255, 0.5) 40%, transparent 60%),
-    radial-gradient(1px 1px at 8% 58%, rgba(255, 255, 255, 0.65) 40%, transparent 60%),
-    radial-gradient(ellipse 120% 90% at 50% 42%, #0a1226 0%, #050914 55%, #03050d 100%);
-  background-size:
-    520px 520px,
-    380px 380px,
-    640px 640px,
-    760px 760px,
-    450px 450px,
-    590px 590px,
-    830px 830px,
-    100% 100%;
-  background-repeat: repeat;
+  /* 3D 地球太空底色：星空由 spaceScene 的 canvas 画（globe 模式挂载），这里只留
+     近黑深空渐变垫底（Google Earth 式的安静太空）；mercator 模式瓦片满屏覆盖，不可见 */
+  background-color: #010207;
+  background-image: radial-gradient(ellipse 120% 90% at 50% 42%, #060b18 0%, #02050e 55%, #000106 100%);
 }
 
 /* ---------- 面板卡片：材质与右上角 .seg 按钮统一（白色磨砂，不随底图模式变色） ---------- */

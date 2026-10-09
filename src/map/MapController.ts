@@ -11,6 +11,7 @@ import {
 } from 'maplibre-gl';
 import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, nameExpr, STADIA_KEY, GLOBE_SKY, FLAT_SKY, type BaseMode, type LabelLanguage } from './styleFactory';
 import { ensureProtocol } from './oceanTint';
+import { mountSpaceScene, type SpaceScene } from './spaceScene';
 import type { Airport } from '../data/search';
 import {
   greatCirclePoints, greatCircleMidpoint, haversineKm, initialBearing,
@@ -59,6 +60,7 @@ export class MapController {
   map: MLMap;
   private routes = new Map<string, RouteRecord>();
   private routeLabelLayers = new Set<string>();
+  private space: SpaceScene | null = null;
 
   constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false) {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议
@@ -86,6 +88,8 @@ export class MapController {
         (window as any).__mapErrors.push(String(e?.error?.message ?? e));
       });
     }
+    // 3D 太空场景（星空 + 大气辉光）：仅 globe 模式挂载，切回平面时整体卸载
+    if (globe) this.space = mountSpaceScene(this.map);
   }
 
   onReady(cb: () => void): void {
@@ -135,6 +139,11 @@ export class MapController {
       this.map.setSky(on ? (GLOBE_SKY as any) : (FLAT_SKY as any));
     } catch (e) {
       console.warn('[MapController] setProjection failed', e);
+    }
+    if (on && !this.space) this.space = mountSpaceScene(this.map);
+    else if (!on && this.space) {
+      this.space.destroy();
+      this.space = null;
     }
   }
 
