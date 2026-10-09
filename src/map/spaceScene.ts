@@ -1,10 +1,13 @@
 // 3D 地球太空场景：程序化星空 + 地球边缘大气辉光（自绘 2D canvas，零依赖零资产文件）。
-// 观感基准是 Google Earth：太空近黑、星星低调，让地球当主角；大气 = 贴边白亮带 +
-// 窄蓝光圈快速衰减 + 球面内侧深蓝吸收带过渡。
+// 观感基准是 Google Earth：太空近黑、星星低调，让地球当主角；大气 = 贴轮廓白亮带 +
+// 窄蓝光圈快速衰减，只画在球盘轮廓外侧。
 //
 // 两个已实测前提（HANDOFF §4「3D 地球批 2」）：maplibre v5.24 自带大气 shader 不渲染
-// （setSky / 样式级 sky 均无效，勿再追查）；球外 WebGL 画布像素全透明。
-// 因此星空画布垫在地图画布之下、辉光画布盖在地图画布之上（地图控件之下），互不干扰。
+// （setSky / 样式级 sky 均无效，勿再追查）；WebGL 画布球盘内不透明、球外像素全透明。
+// 因此星空、辉光两张画布都垫在地图画布之下（星空最底、辉光贴其上）：辉光只在球外
+// 透明像素里可见 —— 地名标注（GL symbol 层，没法像 DOM marker 那样抬 z-index）、航线、
+// 机场卡片等地图上的任何内容都不会被盖住（2026-10-09 用户两轮反馈后定稿；此前辉光
+// 盖在地图上方，内侧大气带把 limb 附近的地名蒙灰，无法根治故整体挪到下面）。
 //
 // 辉光几何（2026-10-09 重做）：球心 = project(地图中心)，半径 = 球盘轮廓的解析解 ——
 // globe 是透视投影，屏幕上球面点 to |project(θ)-球心| 在地平线角处取到最大值，这个
@@ -146,7 +149,8 @@ function limbGeometry(map: MLMap, maxR: number): { cx: number; cy: number; r: nu
   return { cx: center.x, cy: center.y, r };
 }
 
-/** 大气辉光。返回 false = 当前没有可见球体，画布保持全透明 */
+/** 大气辉光（画布垫在地图画布之下，只有球盘轮廓外的部分可见）。
+ *  返回 false = 当前没有可见球体，画布保持全透明 */
 function drawAtmosphere(map: MLMap, canvas: HTMLCanvasElement): boolean {
   const ctx = canvas.getContext('2d');
   if (!ctx) return false;
@@ -156,48 +160,19 @@ function drawAtmosphere(map: MLMap, canvas: HTMLCanvasElement): boolean {
   const geom = limbGeometry(map, Math.max(canvas.width, canvas.height));
   if (!geom) return false;
   const r = geom.r;
-  const w = canvas.width;
-  const h = canvas.height;
-  const cx = geom.cx;
-  const cy = geom.cy;
 
-  // 1) 球面内侧贴边的大气（clip 在盘内）：微暗 → 深蓝吸收带 → 快速爬升到贴边白亮带。
-  //    径向渐变超出外圈会钳到末档颜色，必须 clip 再填
-  const inner = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r);
-  inner.addColorStop(0, 'rgba(8,20,45,0)');
-  inner.addColorStop(0.5, 'rgba(12,30,66,0.12)');
-  inner.addColorStop(0.78, 'rgba(18,44,96,0.18)');
-  inner.addColorStop(0.9, 'rgba(90,140,225,0.28)');
-  inner.addColorStop(0.97, 'rgba(185,215,252,0.55)');
-  inner.addColorStop(1, 'rgba(235,245,255,0.82)');
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
-  ctx.clip();
-  ctx.fillStyle = inner;
-  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-  ctx.restore();
-
-  // 2) 边缘外圈光圈：贴轮廓的白亮环 ~10% 半径内衰减完（Google 的光圈收得很紧）。
-  //    渐变从 0.85R、alpha 0 起步 —— 内侧会钳位到首档颜色，首档 nonzero 会把整球蒙上白雾
-  const glow = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.1);
-  glow.addColorStop(0, 'rgba(216,238,255,0)');
-  glow.addColorStop(0.52, 'rgba(200,230,255,0.10)');
-  glow.addColorStop(0.6, 'rgba(216,238,255,0.60)');
-  glow.addColorStop(0.68, 'rgba(180,215,255,0.42)');
-  glow.addColorStop(0.8, 'rgba(115,165,245,0.18)');
-  glow.addColorStop(0.9, 'rgba(75,120,228,0.06)');
-  glow.addColorStop(1, 'rgba(50,88,190,0)');
+  // 贴轮廓的白亮带 + 窄蓝光圈，~5% 半径内衰减完。渐变从 0.98R、alpha 0 起步：径向渐变
+  // 内侧会钳位到首档颜色，首档 nonzero 会在球盘还没出图时（瓦片未到、GL 画布透明）把
+  // 整个盘内蒙上白雾。峰值放在解析轮廓 1.0R 处 —— 解析半径与 GL 真边互差 <1.5%（AA 边
+  // 宽度量级），亮带始终压着真边，经边缘抗锯齿像素透出，不会出现暗缝
+  const glow = ctx.createRadialGradient(geom.cx, geom.cy, r * 0.98, geom.cx, geom.cy, r * 1.05);
+  glow.addColorStop(0, 'rgba(235,246,255,0)');
+  glow.addColorStop(0.28, 'rgba(233,244,255,0.62)');
+  glow.addColorStop(0.5, 'rgba(185,218,255,0.24)');
+  glow.addColorStop(0.78, 'rgba(110,158,242,0.08)');
+  glow.addColorStop(1, 'rgba(75,120,228,0)');
   ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, w, h);
-
-  // 3) 细亮边线：把球体轮廓从星空里“提”出来
-  ctx.strokeStyle = 'rgba(235,246,255,0.55)';
-  ctx.lineWidth = Math.max(1, r * 0.0022);
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - ctx.lineWidth * 0.4, 0, Math.PI * 2);
-  ctx.stroke();
-
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   return true;
 }
 
@@ -221,9 +196,10 @@ export function mountSpaceScene(map: MLMap): SpaceScene {
   atmo.style.opacity = '0';
   atmo.style.transition = 'opacity 0.6s ease';
 
-  // 星空垫底（canvas-container 之前）；辉光盖在地图画布上、控件（署名/导航）之下
+  // 星空最底；辉光垫在地图画布（canvas-container）之下 —— GL 画布球外像素透明，光圈
+  // 从球背后透出，球上的标注/航线/机场卡片零遮挡，无需任何 z-index 补偿
   container.insertBefore(stars, container.firstChild);
-  map.getCanvasContainer().insertAdjacentElement('afterend', atmo);
+  container.insertBefore(atmo, map.getCanvasContainer());
 
   // 辉光按 1 倍分辨率绘制省填充开销；半径是解析解，无需离屏画布和逐帧读像素
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
