@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MapController, type LegInfo, type RouteEntry } from './map/MapController';
 import type { BaseMode, LabelLanguage } from './map/styleFactory';
 import { findByCode, findAirportNear, type Airport } from './data/search';
@@ -10,7 +10,7 @@ import { STRINGS, type Lang } from './i18n/strings';
 import { SearchPanel } from './components/SearchPanel';
 import { RouteList, ROUTE_COLORS } from './components/RouteList';
 import { RouteSummary } from './components/RouteSummary';
-import { TopRightControls } from './components/TopRightControls';
+import { TopRightMenu } from './components/TopRightMenu';
 
 let uid = 0;
 const nextId = () => `rt-${++uid}`;
@@ -24,6 +24,7 @@ interface UrlState {
   units: Units;
   labels: boolean;
   globe: boolean;
+  dark: boolean;
   sbf: string;
 }
 
@@ -83,6 +84,7 @@ function parseUrl(): UrlState {
     units: q.get('u') === 'mi' || q.get('u') === 'nm' ? (q.get('u') as Units) : 'km',
     labels: q.get('labels') !== '0',
     globe: q.get('globe') === '1',
+    dark: q.get('theme') !== 'light',
     sbf: q.get('sbf') ?? '',
   };
 }
@@ -105,6 +107,7 @@ export default function App() {
   );
   const [labelsOn, setLabelsOn] = useState(initial.labels);
   const [globeOn, setGlobeOn] = useState(initial.globe);
+  const [dark, setDark] = useState(initial.dark);
   const [legsMap, setLegsMap] = useState<Record<string, LegInfo[]>>({});
   const [panelOpen, setPanelOpen] = useState(true);
   const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
@@ -195,6 +198,11 @@ export default function App() {
     if (readyRef.current) controllerRef.current?.setGlobe(globeOn);
   }, [globeOn]);
 
+  // 深色模式：html.dark 类切换整套 CSS 变量（useLayoutEffect 避免首帧闪浅色）
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+  }, [dark]);
+
   // URL 同步（replaceState，不产生历史记录）
   useEffect(() => {
     const q = new URLSearchParams();
@@ -213,9 +221,10 @@ export default function App() {
     if (globeOn) q.set('globe', '1');
     if (units !== 'km') q.set('u', units);
     if (!labelsOn) q.set('labels', '0');
+    if (!dark) q.set('theme', 'light');
     const qs = q.toString();
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
-  }, [routes, lang, base, units, labelsOn, globeOn]);
+  }, [routes, lang, base, units, labelsOn, globeOn, dark]);
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
@@ -471,7 +480,7 @@ export default function App() {
           />
         </svg>
       </button>
-      <TopRightControls
+      <TopRightMenu
         base={base}
         onBase={setBase}
         globeOn={globeOn}
@@ -481,6 +490,8 @@ export default function App() {
         onLang={setLang}
         labelsOn={labelsOn}
         onLabels={setLabelsOn}
+        dark={dark}
+        onDark={setDark}
         t={t}
       />
       <div className="brand">

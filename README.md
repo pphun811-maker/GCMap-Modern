@@ -13,8 +13,10 @@ English | [简体中文](README.zh-CN.md)
   imagery underneath, terrain hillshade, and ground-use coloring; plus a satellite mode built on
   Stadia imagery with an in-browser per-pixel ocean tint. Place labels stay readable in both modes.
 - **3D globe:** At world zoom levels the map renders as a 3D globe floating in a starfield;
-  zooming in transitions smoothly back to the flat map, and a reset button restores the
+  zooming in transitions smoothly back to the flat map, and a reset entry restores the
   north-up, level view at any time.
+- **Dark mode:** Panels and controls ship in a frosted dark theme by default; the map options
+  menu switches back to light at any time (`?theme=light` deep-links it).
 - **Multiple routes:** Routes are managed in a list; each has independent visibility, color,
   and line width, and new routes are assigned colors automatically.
 - **Great-circle geometry:** Per-leg distance and initial bearing, route totals, and
@@ -29,8 +31,10 @@ English | [简体中文](README.zh-CN.md)
   code or by name.
 - **Two input modes:** A tag-flow input for interactive composition, and a raw-text mode that
   accepts several routes pasted at once.
-- **URL deep links:** Routes, language, basemap, projection, unit, and label visibility are all
-  encoded in the URL and restored on load.
+- **Map options menu:** Basemap, 3D globe, view reset, place labels, and language live behind
+  a single button in the top-right corner.
+- **URL deep links:** Routes, language, basemap, projection, unit, label visibility, and theme
+  are all encoded in the URL and restored on load.
 
 ## Getting started
 
@@ -78,6 +82,7 @@ Application state can be preset through query parameters; the URL is kept in syn
 | `globe`   | `1` | `1` renders the map as a 3D globe at low zoom; omit for the flat map |
 | `u`       | `km`, `mi`, `nm` | Distance unit |
 | `labels`  | `0` | `0` hides place labels; omit to show them |
+| `theme`   | `light` | `light` uses the light UI theme; omit for dark mode |
 
 Example: `/?route=LHR-SIN-SYD;PEK-JFK&base=satellite&u=nm`
 

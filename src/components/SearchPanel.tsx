@@ -223,8 +223,8 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
       <div className="search-row">
         {!rawMode && (
           <svg className="search-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden>
-            <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="#8A8A86" strokeWidth="1.8" />
-            <line x1="13" y1="13" x2="17" y2="17" stroke="#8A8A86" strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <line x1="13" y1="13" x2="17" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
         )}
         {rawMode ? (
@@ -285,7 +285,7 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
         {!rawMode && selected.length > 0 && (
           <button className="chip-btn" title={t.swap} onClick={swap}>
             <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden>
-              <path d="M5 7h9M12 4l3 3-3 3M15 13H6M8 10l-3 3 3 3" fill="none" stroke="#5B5B57" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M5 7h9M12 4l3 3-3 3M15 13H6M8 10l-3 3 3 3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         )}
@@ -301,7 +301,7 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
               <path
                 d="M18 2 8.5 11.5M18 2l-6.2 16-3.3-6.5L2 8.2z"
                 fill="none"
-                stroke="#5B5B57"
+                stroke="currentColor"
                 strokeWidth="1.6"
                 strokeLinecap="round"
                 strokeLinejoin="round"
