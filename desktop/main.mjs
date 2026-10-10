@@ -40,6 +40,24 @@ function report(line) {
   }
 }
 
+// Startup diagnostics: every significant step is appended to main.log inside
+// the user-data directory, together with child-process and renderer health
+// events, plus a short heartbeat over the first minute. If a window ever
+// freezes, this file shows exactly how far startup got.
+const logPath = () => join(app.getPath('userData'), 'main.log');
+
+function log(msg) {
+  if (SMOKE) {
+    report(msg);
+    return;
+  }
+  try {
+    writeFileSync(logPath(), `[${new Date().toISOString()}] ${msg}\n`, { flag: 'a' });
+  } catch {
+    /* best effort */
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Static file server (loopback only)
 // ---------------------------------------------------------------------------
@@ -150,26 +168,14 @@ function watchTiles(session) {
   );
 }
 
-function setupSmokeDiagnostics(win) {
-  app.on('child-process-gone', (_event, details) => {
-    report(`CHILD-GONE ${details.type} reason=${details.reason} exit=${details.exitCode}`);
-  });
+function watchRendererHealth(win) {
   win.webContents.on('render-process-gone', (_event, details) => {
-    report(`RENDER-GONE reason=${details.reason} exit=${details.exitCode}`);
+    log(`RENDER-GONE reason=${details.reason} exit=${details.exitCode}`);
   });
-  win.webContents.on('unresponsive', () => report('UNRESPONSIVE'));
+  win.webContents.on('unresponsive', () => log('RENDERER-UNRESPONSIVE'));
+  win.webContents.on('responsive', () => log('RENDERER-RESPONSIVE-AGAIN'));
   win.webContents.on('did-fail-load', (_event, code, desc, url) => {
-    report(`DID-FAIL-LOAD ${code} ${desc} ${url}`);
-  });
-  win.webContents.on('console-message', (...args) => {
-    try {
-      const msg = args
-        .map((a) => (a && typeof a === 'object' && 'message' in a ? a.message : String(a)))
-        .join(' ');
-      report(`CONSOLE ${msg.slice(0, 400)}`);
-    } catch {
-      /* ignore */
-    }
+    log(`DID-FAIL-LOAD ${code} ${desc} ${url}`);
   });
 }
 
@@ -225,6 +231,7 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow = null;
 
   app.on('second-instance', () => {
+    log('second-instance');
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
@@ -232,29 +239,41 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => {
+    log('window-all-closed');
     app.quit();
   });
 
   // Safety net: if a child process stalls the shutdown sequence, terminate
   // hard after a grace period instead of leaving a zombie process behind.
   app.on('before-quit', () => {
+    log('before-quit');
     setTimeout(() => {
       process.kill(process.pid, 'SIGKILL');
     }, 5000).unref();
   });
 
+  app.on('child-process-gone', (_event, details) => {
+    log(`CHILD-GONE ${details.type} reason=${details.reason} exit=${details.exitCode}`);
+  });
+
   app.whenReady().then(async () => {
+    log(`boot: pid=${process.pid} smoke=${SMOKE} debug=${DEBUG}`);
+    log('whenReady');
+
     if (!SMOKE && !DEBUG) Menu.setApplicationMenu(null);
+    log('menu configured');
 
     const { port } = await startStaticServer(join(__dirname, 'dist'));
     const appUrl = `http://127.0.0.1:${port}`;
+    log(`server listening port=${port}`);
 
-    // Off-screen, taskbar-free window for the automated self-check; a normal
-    // window for regular use. `backgroundThrottling: false` in smoke mode
-    // keeps rendering active so the map reaches its loaded state quickly.
+    // Both modes show the window from birth. On this machine a deferred
+    // win.show() (the usual show:false + ready-to-show pattern) can stall the
+    // main process, so the window is visible right away; the dark
+    // backgroundColor prevents a white flash while the page renders.
     const windowOptions = SMOKE
       ? { x: -32000, y: -32000, show: true, skipTaskbar: true }
-      : { ...loadBounds({ width: 1440, height: 900 }), show: false };
+      : { ...loadBounds({ width: 1440, height: 900 }), show: true };
 
     mainWindow = new BrowserWindow({
       ...windowOptions,
@@ -272,6 +291,9 @@ if (!app.requestSingleInstanceLock()) {
         ...(SMOKE ? { backgroundThrottling: false } : {}),
       },
     });
+    log(`window created show=${Boolean(windowOptions.show)}`);
+
+    watchRendererHealth(mainWindow);
 
     // External links open in the system browser; nothing navigates the app
     // window away from the local server.
@@ -298,31 +320,51 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     mainWindow.once('ready-to-show', () => {
-      if (!SMOKE) mainWindow.show();
+      log('ready-to-show');
     });
     mainWindow.on('close', () => {
-      if (!SMOKE) saveBounds(mainWindow);
+      log('close');
+      if (SMOKE || DEBUG) return;
+      saveBounds(mainWindow);
+      // Hard exit: on this machine the regular Electron shutdown sequence can
+      // stall forever - the main loop stops inside the quit path (confirmed
+      // via main.log), leaving zombie processes that hold the single-instance
+      // lock. State is saved and there is nothing else to clean up, so exit
+      // immediately; Chromium's child processes shut themselves down when the
+      // parent process disappears.
+      log('hard-exit');
+      process.kill(process.pid, 'SIGKILL');
     });
 
     const startUrl = SMOKE ? `${appUrl}/?route=PVG-NRT` : appUrl;
     if (SMOKE) {
-      report('SMOKE-BEGIN');
       const heartbeat = setInterval(() => report(`HB tiles=${smokeTileHits}`), 3000);
       heartbeat.unref?.();
       watchTiles(mainWindow.webContents.session);
-      setupSmokeDiagnostics(mainWindow);
-      report('LOAD-BEGIN');
+      log('loadURL begin');
       await Promise.race([
-        mainWindow.loadURL(startUrl).catch((error) => report(`LOAD-URL-ERR ${String(error)}`)),
+        mainWindow.loadURL(startUrl).catch((error) => log(`LOAD-URL-ERR ${String(error)}`)),
         new Promise((r) => setTimeout(r, 15_000)),
       ]);
-      report('LOAD-END');
+      log('loadURL end');
       runSmoke(mainWindow).catch((error) => {
         report(`SMOKE-FAIL ${String(error)}`);
         app.exit(1);
       });
     } else {
+      log('loadURL begin');
       await mainWindow.loadURL(startUrl);
+      log('loadURL done');
+      // Heartbeat for the first minute of a normal session: if the process
+      // ever freezes, the log shows how far the main loop got.
+      let beats = 0;
+      const hb = setInterval(() => {
+        log(`tick ${++beats}`);
+        if (beats >= 12) {
+          clearInterval(hb);
+          log('heartbeat finished');
+        }
+      }, 5000);
     }
   });
 }
