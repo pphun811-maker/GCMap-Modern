@@ -1,7 +1,7 @@
 {
   "name": "gcmap-modern",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Great-circle route mapper with Apple Maps-style vector and satellite basemaps",
   "license": "MIT",
   "author": "pphun811-maker",

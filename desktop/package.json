@@ -1,0 +1,22 @@
+{
+  "name": "gcmap-modern-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Desktop app for GCMap Modern - a great-circle route mapper (Electron shell around the production web build)",
+  "license": "MIT",
+  "author": "pphun811-maker",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "web:build": "vite build",
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "icons": "node scripts/make-icons.mjs",
+    "dist": "npm run web:build && npm run icons && electron-builder --win nsis --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  }
+}

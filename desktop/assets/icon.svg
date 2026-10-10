@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- GCMap Modern app icon: a globe with a great-circle route arc. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1C1C25"/>
+      <stop offset="1" stop-color="#0B0B11"/>
+    </linearGradient>
+    <radialGradient id="globe" cx="0.36" cy="0.30" r="0.95">
+      <stop offset="0" stop-color="#26395C"/>
+      <stop offset="0.62" stop-color="#15233C"/>
+      <stop offset="1" stop-color="#0B1322"/>
+    </radialGradient>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="0.6">
+      <stop offset="0" stop-color="#0B7BE8"/>
+      <stop offset="1" stop-color="#0FA3B1"/>
+    </linearGradient>
+    <radialGradient id="endGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#9CCBFF" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#0B7BE8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.86" stop-color="#3E5985" stop-opacity="0"/>
+      <stop offset="0.97" stop-color="#54719F" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#54719F" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded-square deep-space background -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#bg)"/>
+
+  <!-- Globe -->
+  <circle cx="512" cy="512" r="300" fill="url(#globe)"/>
+  <circle cx="512" cy="512" r="300" fill="url(#rim)"/>
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#3A5480" stroke-opacity="0.9" stroke-width="9"/>
+
+  <!-- Graticule -->
+  <g fill="none" stroke="#5C7FAD" stroke-opacity="0.42" stroke-width="7">
+    <ellipse cx="512" cy="512" rx="297" ry="106"/>
+    <ellipse cx="512" cy="436" rx="264" ry="86"/>
+    <ellipse cx="512" cy="588" rx="264" ry="86"/>
+    <ellipse cx="512" cy="512" rx="150" ry="297"/>
+    <ellipse cx="512" cy="512" rx="261" ry="297"/>
+  </g>
+
+  <!-- Great-circle route: depart upper-left, arrive lower-right -->
+  <path d="M 352 398 Q 500 284 689 616" fill="none" stroke="url(#arc)" stroke-width="21" stroke-linecap="round"/>
+
+  <!-- Route endpoints -->
+  <circle cx="352" cy="398" r="52" fill="url(#endGlow)"/>
+  <circle cx="352" cy="398" r="16" fill="#F2F8FF"/>
+  <circle cx="689" cy="616" r="52" fill="url(#endGlow)"/>
+  <circle cx="689" cy="616" r="16" fill="#F2F8FF"/>
+</svg>

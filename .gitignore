@@ -5,6 +5,12 @@ node_modules/
 dist/
 tsconfig.tsbuildinfo
 
+# Desktop shell build output. desktop/dist is a web build that picks up the
+# local Stadia key from .env.local — it must never be committed.
+desktop/dist/
+desktop/build/
+desktop/release/
+
 # Local tooling state
 .zcode/
 .workbuddy/

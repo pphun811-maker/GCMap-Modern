@@ -117,8 +117,22 @@ npm run build:airports
 │       ├── oceanTint.ts        # per-pixel satellite tile processing (ocean tint) via a custom protocol
 │       └── MapController.ts    # MapLibre wrapper: layers, markers, basemap switching
 ├── design-assets/              # generated style and landcover assets consumed by the build
+├── desktop/                    # optional Electron shell that packages the app for Windows
 └── scripts/build-airports.mjs  # OurAirports CSV -> src/data/airports.json
 ```
+
+## Desktop app (Windows)
+
+An optional Electron shell packages the production build as a Windows desktop
+application. It serves the same web app from a loopback port and opens it in
+its own window; external links (SimBrief dispatch, map attribution) open in the
+system browser. The shell lives in `desktop/` — see
+[desktop/README.md](desktop/README.md) for build instructions (Node.js
+required; `npm install && npm run dist` inside `desktop/`).
+
+Like the web build, the desktop build reads `VITE_STADIA_KEY` from the project
+root's `.env.local`; without a key it runs with the key-free Esri imagery
+fallback.
 
 ## Data sources and attribution
 

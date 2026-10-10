@@ -1,0 +1,39 @@
+# electron-builder configuration for the GCMap Modern desktop app.
+# Build: npm run dist  (from the desktop/ directory)
+
+appId: io.github.pphun811-maker.gcmap-modern
+productName: GCMap Modern
+copyright: MIT License - pphun811-maker and contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the shell and the web build go into the package: no sources, no
+# node_modules (the main process uses nothing but Electron itself).
+files:
+  - main.mjs
+  - package.json
+  - dist/**
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # A 1024x1024 PNG is accepted here; electron-builder generates the
+  # multi-size .ico that gets embedded in the executable.
+  icon: build/icon.png
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: GCMap Modern
+  uninstallDisplayName: GCMap Modern ${version}
+  artifactName: GCMap-Modern-Setup-${version}.exe
