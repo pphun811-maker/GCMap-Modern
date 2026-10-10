@@ -50,8 +50,13 @@ The development server runs at http://127.0.0.1:5173.
 ### Optional: Stadia satellite imagery
 
 The satellite basemap uses Stadia Maps imagery with an ocean tint applied per pixel in the
-browser. To activate it, grab a free API key at [client.stadiamaps.com](https://client.stadiamaps.com/signup/),
-create a `.env.local` file in the project root, and add:
+browser. Two ways to activate it:
+
+- **Online (no build needed):** open the map options menu in the top-right corner, paste your
+  API key under "Imagery key" and press Enter — the key is stored in your browser only, and a
+  "Change key" button stays there if you ever need to swap it;
+- **Self-hosted:** grab a free API key at [client.stadiamaps.com](https://client.stadiamaps.com/signup/),
+  create a `.env.local` file in the project root, and add:
 
 ```
 VITE_STADIA_KEY=your-key-here
@@ -59,7 +64,8 @@ VITE_STADIA_KEY=your-key-here
 
 Then restart the dev server (or rebuild). Without a key the application falls back to key-free
 Esri World Imagery, so a fresh checkout works out of the box. The key stays local and is never
-committed (`.env*` is gitignored).
+committed (`.env*` is gitignored; a key entered in the menu lives only in your browser's
+localStorage).
 
 For a production build:
 

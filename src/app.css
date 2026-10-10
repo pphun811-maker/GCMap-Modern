@@ -1053,6 +1053,90 @@ html.dark {
   box-shadow: none;
 }
 
+/* ---------- 菜单内：公开版卫星 key 导入（填完收起为换 Key 按钮） ---------- */
+.menu-key {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 38px;
+}
+
+.key-change {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: var(--fill);
+  color: var(--text-btn);
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.key-change:hover {
+  background: var(--fill-hover);
+}
+
+.menu-key-edit {
+  padding: 8px 0 10px;
+}
+
+.key-input {
+  width: 100%;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline);
+  background: var(--fill-soft);
+  padding: 0 9px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-strong);
+  outline: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.key-input:focus {
+  background: var(--field-focus-bg);
+  border-color: var(--focus-ring);
+}
+
+.key-input::placeholder {
+  color: var(--text-faint);
+}
+
+.key-input:disabled {
+  opacity: 0.6;
+}
+
+/* 输入框下的一行：注册直达链接 / 验证中 / 报错，三态互斥 */
+.key-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.key-hint a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.key-hint a:hover {
+  text-decoration: underline;
+}
+
+.key-hint-err {
+  color: var(--danger);
+}
+
 /* Apple 式开关 */
 .switch {
   position: relative;

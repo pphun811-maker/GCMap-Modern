@@ -54,6 +54,13 @@ export const STRINGS = {
     sbfNeedSelect: '先创建或选中一条航线，再用真实航路替换',
     realRouteNote: (n: number) => `真实航路 · ${n} 个航点`,
     vsDirect: '较直飞',
+    satKey: '卫星 Key',
+    satKeyTip: '填入你自己的 Stadia Maps API Key，启用高清卫星影像（替代免费 Esri 影像）；只保存在本机浏览器，可随时更换',
+    keyPlaceholder: '粘贴 API Key，回车保存',
+    keySignup: '没有 Key？免费注册一个 →',
+    keyChecking: '正在验证 Key…',
+    keyInvalid: 'Key 无效或网络异常，请重试',
+    changeKey: '换 Key',
   },
   en: {
     appName: 'GCMap Modern',
@@ -108,6 +115,13 @@ export const STRINGS = {
     sbfNeedSelect: 'Create or select a route first, then replace it with the real route',
     realRouteNote: (n: number) => `Real route · ${n} waypoints`,
     vsDirect: 'vs direct',
+    satKey: 'Imagery key',
+    satKeyTip: 'Use your own Stadia Maps API key for the high-res tinted imagery instead of the free Esri fallback; saved in this browser only, change anytime',
+    keyPlaceholder: 'Paste API key, press Enter',
+    keySignup: 'No key? Get a free one →',
+    keyChecking: 'Validating key…',
+    keyInvalid: 'Invalid key or network error',
+    changeKey: 'Change key',
   },
 } as const;
 

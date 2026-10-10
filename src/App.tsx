@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MapController, type LegInfo, type RouteEntry } from './map/MapController';
 import type { BaseMode, LabelLanguage } from './map/styleFactory';
+import { KEY_EDITABLE, hasRuntimeStadiaKey } from './map/styleFactory';
 import { findByCode, findAirportNear, type Airport } from './data/search';
 import { convertDistance, type Units } from './geo/greatCircle';
 import {
@@ -112,6 +113,8 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
   const [mapReady, setMapReady] = useState(false);
+  // 公开版：用户已填入自己的卫星 key（存 localStorage；填过则菜单收起为换 Key 按钮）
+  const [satKeySet, setSatKeySet] = useState(hasRuntimeStadiaKey);
 
   const mapDivRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
@@ -364,6 +367,12 @@ export default function App() {
   // 回到空闲态：取消等待/输入，或关掉导入结果提示（消息右上角的小 ×）
   const cancelSbf = () => setSbfUi({ kind: 'idle' });
 
+  // 公开版：用户在菜单填入自己的 Stadia key（UI 侧已预验证）→ 换卫星源并记住
+  const applySatKey = (key: string) => {
+    controllerRef.current?.applySatelliteKey(key);
+    setSatKeySet(true);
+  };
+
   // 轮询一轮：签名与基线不同（或无基线）即自动导入
   pollSbfRef.current = () => {
     if (sbfUi.kind !== 'waiting' || sbfBusyRef.current) return;
@@ -492,6 +501,9 @@ export default function App() {
         onLabels={setLabelsOn}
         dark={dark}
         onDark={setDark}
+        keyEditable={KEY_EDITABLE}
+        hasSatKey={satKeySet}
+        onSatKey={applySatKey}
         t={t}
       />
       <div className="brand">

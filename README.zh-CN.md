@@ -38,16 +38,20 @@ npm run dev
 
 ### 可选：Stadia 卫星影像
 
-卫星底图使用 Stadia Maps 影像，海洋配色在浏览器内逐像素处理。激活方式：在
-[Stadia Maps](https://client.stadiamaps.com/signup/) 注册领取免费 API key，在项目根目录创建
-`.env.local` 文件并写入
+卫星底图使用 Stadia Maps 影像，海洋配色在浏览器内逐像素处理。两种激活方式：
+
+- **在线使用（无需构建）：** 打开右上角「地图选项」菜单，在「卫星 Key」一栏粘贴自己的
+  API key 并回车即可，key 只保存在本机浏览器中，可随时点「换 Key」更换；
+- **自部署：** 在 [Stadia Maps](https://client.stadiamaps.com/signup/) 注册领取免费 API key，
+  在项目根目录创建 `.env.local` 文件并写入
 
 ```
 VITE_STADIA_KEY=你的key
 ```
 
 然后重启开发服务器（或重新构建）。没有 key 时自动回退到免 key 的 Esri World Imagery，
-新检出开箱即用。key 仅存本地（`.env*` 已被 gitignore），绝不提交。
+新检出开箱即用。key 仅存本地（`.env*` 已被 gitignore、菜单填入的 key 只进浏览器
+localStorage），绝不提交。
 
 生产构建：
 

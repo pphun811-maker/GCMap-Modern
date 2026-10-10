@@ -21,8 +21,53 @@ const ESRI_IMAGERY =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
 // 卫星影像：Stadia 纯影像（EU 端点，美西端点不通），瓦片走 gcimg:// 协议经 oceanTint 逐像素海洋调色。
-// key 绝不入库（公开仓库合规）：读 .env.local 的 VITE_STADIA_KEY；取不到回退免 key 的 Esri World Imagery。
-export const STADIA_KEY = ((import.meta.env.VITE_STADIA_KEY as string | undefined) ?? '').trim();
+// key 绝不入库（公开仓库合规），两级来源：
+//   ① 构建期内置：本地构建读 .env.local 的 VITE_STADIA_KEY（桌面版同源）；
+//   ② 运行时用户填入：公开构建（CI/Release 无 key）在菜单里填自己的 key，
+//      只存浏览器 localStorage（不进 URL、不进仓库），gcimg 协议处理器动态读取。
+// 两者都没有时回退免 key 的 Esri World Imagery。
+export const BAKED_STADIA_KEY = ((import.meta.env.VITE_STADIA_KEY as string | undefined) ?? '').trim();
+export const STADIA_KEY_STORAGE = 'gcmap.stadiakey';
+
+let runtimeKey = '';
+if (typeof localStorage !== 'undefined') {
+  try { runtimeKey = localStorage.getItem(STADIA_KEY_STORAGE) ?? ''; } catch { /* 隐私模式等：当无 key */ }
+}
+
+/** 当前生效的 Stadia key：构建期内置优先，其次用户运行时填入的（gcimg 协议处理器每次取瓦片时动态调用） */
+export function activeStadiaKey(): string {
+  return BAKED_STADIA_KEY || runtimeKey;
+}
+
+/** 公开构建（无内置 key）才提供"填入自己的 key"入口；本地/桌面带 key 版本不显示该 UI */
+export const KEY_EDITABLE = !BAKED_STADIA_KEY;
+
+/** 用户运行时填入 key：写 localStorage 持久化 + 热更新 gcimg 协议取值 */
+export function setRuntimeStadiaKey(key: string): void {
+  runtimeKey = key;
+  try {
+    if (key) localStorage.setItem(STADIA_KEY_STORAGE, key);
+    else localStorage.removeItem(STADIA_KEY_STORAGE);
+  } catch { /* 隐私模式：本会话仍生效，刷新后丢失 */ }
+}
+
+export function hasRuntimeStadiaKey(): boolean {
+  return !!runtimeKey;
+}
+
+/** 验证 key 可用性：抓一张 z1 小瓦片，2xx 即有效（无效 key / 网络不通都会失败）。
+ *  在保存前调用，挡住手滑输错的 key，避免卫星源悄悄全线 403。 */
+export async function validateStadiaKey(key: string): Promise<boolean> {
+  try {
+    const resp = await fetch(
+      `https://tiles-eu.stadiamaps.com/data/imagery/1/0/0.jpg?api_key=${encodeURIComponent(key)}`,
+    );
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 const STADIA_ATTRIBUTION =
   '© CNES, Distribution Airbus DS, © Airbus DS, © PlanetObserver (Contains Copernicus Data) | © Stadia Maps';
 
@@ -88,6 +133,24 @@ function isNameLabel(textField: unknown): boolean {
 // 各标注层矢量模式配色（卫星切白后恢复用；每次 buildStyle 重建）
 const LABEL_PAINT_DEFAULTS: Record<string, { color: string; halo: string }> = {};
 
+// gcimg 瓦片 URL 版本号：换 key 时自增。key 不体现在 URL 里，不带版本号的话 maplibre
+// 会命中瓦片缓存继续用旧 key 抓回的图；协议 URL 容忍 ?v=<n> 后缀（oceanTint 正则兼容）
+let stadiaTileVer = 0;
+export function bumpStadiaTileVersion(): void {
+  stadiaTileVer++;
+}
+
+/** Stadia 卫星源规格（gcimg:// 协议 + 海洋调色）；buildStyle 初始构建与换 key 重建共用 */
+export function stadiaSourceSpec(): any {
+  return {
+    type: 'raster',
+    tiles: [`gcimg://{z}/{x}/{y}${stadiaTileVer ? `?v=${stadiaTileVer}` : ''}`],
+    tileSize: 512,
+    maxzoom: 18,
+    attribution: STADIA_ATTRIBUTION,
+  };
+}
+
 export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vector', globe = false): StyleSpecification {
   const style = JSON.parse(appleLandcoverRaw) as any;
   for (const k of Object.keys(LABEL_PAINT_DEFAULTS)) delete LABEL_PAINT_DEFAULTS[k];
@@ -132,14 +195,8 @@ export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vect
     layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
     paint: { 'raster-opacity': 1 },
   });
-  style.sources['satellite-imagery'] = STADIA_KEY
-    ? {
-        type: 'raster',
-        tiles: ['gcimg://{z}/{x}/{y}'],
-        tileSize: 512,
-        maxzoom: 18,
-        attribution: STADIA_ATTRIBUTION,
-      }
+  style.sources['satellite-imagery'] = activeStadiaKey()
+    ? stadiaSourceSpec()
     : {
         type: 'raster',
         tiles: [ESRI_IMAGERY],

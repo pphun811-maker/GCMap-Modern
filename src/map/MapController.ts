@@ -9,7 +9,11 @@ import {
   type GeoJSONSource,
   type StyleSpecification,
 } from 'maplibre-gl';
-import { buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, nameExpr, STADIA_KEY, GLOBE_SKY, FLAT_SKY, type BaseMode, type LabelLanguage } from './styleFactory';
+import {
+  buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, nameExpr,
+  activeStadiaKey, setRuntimeStadiaKey, bumpStadiaTileVersion, stadiaSourceSpec,
+  GLOBE_SKY, FLAT_SKY, type BaseMode, type LabelLanguage,
+} from './styleFactory';
 import { ensureProtocol } from './oceanTint';
 import { mountSpaceScene, type SpaceScene } from './spaceScene';
 import type { Airport } from '../data/search';
@@ -63,8 +67,9 @@ export class MapController {
   private space: SpaceScene | null = null;
 
   constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false) {
-    // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议
-    ensureProtocol(() => STADIA_KEY);
+    // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议；
+    // getter 是动态的：用户运行时填入/更换 key 后无需重注册
+    ensureProtocol(() => activeStadiaKey());
     this.map = new MLMap({
       container,
       style: buildStyle(lang, base, globe),
@@ -129,6 +134,39 @@ export class MapController {
         /* 同上 */
       }
     }
+  }
+
+  /** 用户在菜单填入自己的 Stadia key（UI 侧已通过抓瓦片预验证）：写 localStorage + 热更新
+   *  gcimg 协议取值，并整源重建卫星 source（tileSize/maxzoom 无法原地改）。
+   *  换 key 时瓦片 URL 带 ?v=<n> 版本号穿透 maplibre 瓦片缓存；卫星层可见性保持不变。 */
+  applySatelliteKey(key: string): void {
+    setRuntimeStadiaKey(key);
+    bumpStadiaTileVersion();
+    if (this.map.isStyleLoaded()) this.swapSatelliteSource();
+    else this.map.once('load', () => this.swapSatelliteSource());
+  }
+
+  private swapSatelliteSource(): void {
+    const style = this.map.getStyle() as any;
+    if (!style?.layers) return;
+    const prev = style.layers.find((l: any) => l.id === 'satellite');
+    const vis = prev?.layout?.visibility === 'visible';
+    try { this.map.removeLayer('satellite'); } catch { /* 尚未存在 */ }
+    try { this.map.removeSource('satellite-imagery'); } catch { /* 尚未存在 */ }
+    // 插回原位：background 之后、第一个非 background 层之前（与 buildStyle 的 splice(1,0) 一致）
+    const beforeId = style.layers.find((l: any) => l.id !== 'background' && l.id !== 'satellite')?.id;
+    this.map.addSource('satellite-imagery', stadiaSourceSpec());
+    this.map.addLayer(
+      {
+        id: 'satellite',
+        type: 'raster',
+        source: 'satellite-imagery',
+        metadata: { group: 'satellite' },
+        layout: { visibility: vis ? 'visible' : 'none' },
+        paint: { 'raster-opacity': 1 },
+      },
+      beforeId,
+    );
   }
 
   /** 3D 地球投影：globe=低缩放渲染为球体（放大后 maplibre 自动回落 mercator），mercator=常规平面。
