@@ -1089,6 +1089,15 @@ html.dark {
   padding: 8px 0 10px;
 }
 
+/* 输入框上方的小标签：说明这是什么 Key（卫星 Key · Stadia） */
+.key-edit-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
 .key-input {
   width: 100%;
   height: 30px;
@@ -1116,25 +1125,31 @@ html.dark {
   opacity: 0.6;
 }
 
-/* 输入框下的一行：注册直达链接 / 验证中 / 报错，三态互斥 */
+/* 输入框下的说明区：①是什么/免费/能得到什么（常驻）②验证中/报错（临时状态行）③注册直达链接 */
 .key-hint {
   margin-top: 6px;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--text-muted);
 }
 
+.key-status {
+  margin-top: 3px;
+}
+
+.key-err-text {
+  color: var(--danger);
+}
+
 .key-hint a {
+  display: inline-block;
+  margin-top: 3px;
   color: var(--link);
   text-decoration: none;
 }
 
 .key-hint a:hover {
   text-decoration: underline;
-}
-
-.key-hint-err {
-  color: var(--danger);
 }
 
 /* Apple 式开关 */

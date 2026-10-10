@@ -133,6 +133,7 @@ export function TopRightMenu({
                 </div>
               ) : (
                 <div className="menu-key-edit">
+                  <div className="key-edit-label">{t.satKey}</div>
                   <input
                     className="key-input"
                     type="text"
@@ -154,16 +155,14 @@ export function TopRightMenu({
                       }
                     }}
                   />
-                  <div className={`key-hint${keyErr ? ' key-hint-err' : ''}`}>
-                    {keyChecking
-                      ? t.keyChecking
-                      : keyErr
-                        ? t.keyInvalid
-                        : (
-                          <a href={STADIA_SIGNUP_URL} target="_blank" rel="noreferrer noopener">
-                            {t.keySignup}
-                          </a>
-                        )}
+                  <div className="key-hint">
+                    {/* 是什么 / 免费吗 / 能得到什么——常驻说明；验证中与报错为临时状态行 */}
+                    <div className="key-why">{t.keyWhy}</div>
+                    {keyChecking && <div className="key-status">{t.keyChecking}</div>}
+                    {keyErr && <div className="key-status key-err-text">{t.keyInvalid}</div>}
+                    <a href={STADIA_SIGNUP_URL} target="_blank" rel="noreferrer noopener">
+                      {t.keySignup}
+                    </a>
                   </div>
                 </div>
               )}
