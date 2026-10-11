@@ -1,8 +1,9 @@
 // GCMap Modern — desktop shell.
 //
 // Serves the production web build (desktop/dist) from an HTTP server bound to
-// 127.0.0.1 on an ephemeral port, then opens a single application window at
-// that address. External links (SimBrief dispatch, map attribution, etc.)
+// 127.0.0.1 on a preferred fixed port (falling back to an ephemeral one only
+// if the preferred ports are taken), then opens a single application window
+// at that address. External links (SimBrief dispatch, map attribution, etc.)
 // open in the system browser instead of inside the app.
 //
 // `electron . --smoke` (or GCMAP_SMOKE=1) runs an invisible self-check:
@@ -77,6 +78,26 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+function listenOn(server, port) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onListening = () => {
+      cleanup();
+      resolve(server.address().port);
+    };
+    const cleanup = () => {
+      server.off('error', onError);
+      server.off('listening', onListening);
+    };
+    server.on('error', onError);
+    server.on('listening', onListening);
+    server.listen(port, '127.0.0.1');
+  });
+}
+
 function startStaticServer(root) {
   const rootResolved = resolve(root);
   // Synchronous reads on purpose: all files served here are small, local and
@@ -110,12 +131,23 @@ function startStaticServer(root) {
       res.end('Not found');
     }
   });
-  return new Promise((resolvePromise, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      resolvePromise({ server, port: server.address().port });
-    });
-  });
+  // 固定首选端口（避开 Windows 动态端口段 49152+）：localStorage 按"源"（协议+host:port）
+  // 隔离，随机端口意味着每次启动源都不同，SimBrief 用户名等本地偏好会随端口漂移而丢失。
+  // 首选段全忙才退回随机端口——该会话内偏好仍可用，只是不跨启动持久（罕见兜底）。
+  const preferred = [39187, 39188, 39189];
+  return {
+    server,
+    start: async () => {
+      for (const p of preferred) {
+        try {
+          return { port: await listenOn(server, p), stable: true };
+        } catch (error) {
+          if (error?.code !== 'EADDRINUSE') throw error;
+        }
+      }
+      return { port: await listenOn(server, 0), stable: false };
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +241,9 @@ async function runSmoke(win) {
           canvas: !!document.querySelector('.maplibregl-canvas'),
           pins: document.querySelectorAll('.ap-pin').length,
           brand: !!document.querySelector('.brand-name'),
-          dark: document.documentElement.classList.contains('dark')
+          dark: document.documentElement.classList.contains('dark'),
+          timeRow: !!document.querySelector('.time-row'),
+          timeNote: document.querySelector('.time-note')?.textContent ?? null
         }))()`),
         new Promise((_resolve, reject) => setTimeout(() => reject(new Error('eval-timeout')), 5000)),
       ]);
@@ -220,13 +254,13 @@ async function runSmoke(win) {
       report(`POLL-ERR ${String(error)} tiles=${smokeTileHits}`);
       continue;
     }
-    report(`POLL ${JSON.stringify({ ready: last.ready, canvas: last.canvas, pins: last.pins, brand: last.brand, tiles: last.tiles })}`);
+    report(`POLL ${JSON.stringify({ ready: last.ready, canvas: last.canvas, pins: last.pins, brand: last.brand, timeRow: last.timeRow, tiles: last.tiles })}`);
     if (last.err) break;
-    if (last.canvas && last.pins >= 2 && last.brand && last.tiles >= 1) break;
+    if (last.canvas && last.pins >= 2 && last.brand && last.timeRow && last.tiles >= 1) break;
   }
   const ok = Boolean(
     last && !last.err && !last.evalError &&
-    last.canvas && last.pins >= 2 && last.brand && last.tiles >= 1,
+    last.canvas && last.pins >= 2 && last.brand && last.timeRow && last.tiles >= 1,
   );
   report(`${ok ? 'SMOKE-OK' : 'SMOKE-FAIL'} ${JSON.stringify(last)}`);
   app.exit(ok ? 0 : 1);
@@ -276,9 +310,10 @@ if (!app.requestSingleInstanceLock()) {
     if (!SMOKE && !DEBUG) Menu.setApplicationMenu(null);
     log('menu configured');
 
-    const { port } = await startStaticServer(join(__dirname, 'dist'));
+    const { start } = startStaticServer(join(__dirname, 'dist'));
+    const { port, stable } = await start();
     const appUrl = `http://127.0.0.1:${port}`;
-    log(`server listening port=${port}`);
+    log(`server listening port=${port} stable=${stable}`);
 
     // Both modes show the window from birth. On this machine a deferred
     // win.show() (the usual show:false + ready-to-show pattern) can stall the

@@ -1,7 +1,7 @@
 {
   "name": "gcmap-modern-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Desktop app for GCMap Modern - a great-circle route mapper (Electron shell around the production web build)",
   "license": "MIT",
   "author": "pphun811-maker",
