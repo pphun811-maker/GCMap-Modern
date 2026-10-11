@@ -21,14 +21,17 @@ English | [简体中文](README.zh-CN.md)
   and line width, and new routes are assigned colors automatically.
 - **Great-circle geometry:** Per-leg distance and initial bearing, route totals, and
   km / mi / nm conversion. Routes crossing the antimeridian are drawn continuously.
-- **Flight time & cruise speed:** The summary card estimates flight time from distance at a
-  typical jet cruise (870 km/h plus a per-leg climb/descent allowance); when a SimBrief plan
-  is imported, the plan's own enroute time and cruise speed (Mach / TAS) are shown instead.
-  Speed follows the selected unit (km/h / mph / kt).
+- **Flight time & cruise speed:** The summary card estimates flight time per leg using a
+  distance-banded cruise assumption — narrowbody M0.78 (830 km/h) under 4,000 km, widebody
+  M0.85 (903 km/h) beyond — plus a per-leg taxi/climb/descent allowance. When a SimBrief plan
+  is imported, the plan's own enroute time and cruise speed are shown instead. Cruise speed is
+  always shown in all three units (Mach · km/h · kt); the default aircraft offered when opening
+  SimBrief also follows the same 4,000 km band (A21N / A359).
 - **Real-world routes via SimBrief:** A route can be replaced with its filed airway path: the
-  app opens SimBrief's dispatch page pre-filled with the departure, arrival, and aircraft type
-  (A359 by default); once the plan is generated there, it is imported back automatically and
-  drawn through the actual waypoints. Requires a free SimBrief account; no API key needed.
+  app opens SimBrief's dispatch page pre-filled with the departure, arrival, and an aircraft
+  type picked by route distance (A321neo under 4,000 km, A350-900 beyond); once the plan is
+  generated there, it is imported back automatically and drawn through the actual waypoints.
+  Requires a free SimBrief account; no API key needed.
 - **Bilingual place labels:** Map labels switch between Simplified Chinese and English, and can
   be hidden entirely.
 - **Airport search:** 8,799 airports from the OurAirports database, searchable by IATA/ICAO

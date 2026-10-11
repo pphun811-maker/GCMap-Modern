@@ -29,7 +29,8 @@ export const STRINGS = {
     bearing: '初始航向',
     flightTime: '预计飞行',
     assumedCruise: '假设巡航',
-    noWind: '未计风',
+    narrowbody: '窄体',
+    widebody: '宽体',
     cruise: '巡航',
     duration: (min: number) => {
       const total = Math.max(0, Math.round(min));
@@ -105,7 +106,8 @@ export const STRINGS = {
     bearing: 'initial hdg',
     flightTime: 'Est. flight',
     assumedCruise: 'assumed cruise',
-    noWind: 'winds not included',
+    narrowbody: 'narrowbody',
+    widebody: 'widebody',
     cruise: 'cruise',
     duration: (min: number) => {
       const total = Math.max(0, Math.round(min));

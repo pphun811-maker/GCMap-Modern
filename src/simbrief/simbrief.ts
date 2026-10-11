@@ -3,6 +3,7 @@
 // 生成动作走"带参跳转 SimBrief 生成页 + 用户点 Generate + 本应用轮询拉回"，不需要后端。
 
 import { haversineKm, type LonLat } from '../geo/greatCircle';
+import { TYPE_THRESHOLD_KM } from '../geo/flightTime';
 
 export interface SbfWaypoint {
   ident: string;
@@ -38,6 +39,12 @@ const FETCHER_URL = 'https://www.simbrief.com/api/xml.fetcher.php';
 
 /** 生成页默认机型（用户定稿 A359）。 SimBrief 的设备代码，改这里即可全局换 */
 export const SBF_DEFAULT_TYPE = 'A359';
+
+/** 跳转生成页的默认机型按大圆距离分档（与飞行时间估算的速度分档同阈值）：
+ *  单段 < 4000 km 用窄体 A21N（A321neo），≥ 4000 km 保持宽体 A359 */
+export function dispatchTypeForKm(km: number): string {
+  return km < TYPE_THRESHOLD_KM ? 'A21N' : SBF_DEFAULT_TYPE;
+}
 
 /** 生成页入口：官方 Dispatch Redirect 格式（论坛指南 5299），ICAO 代码。
  *  新 UI 会把 query 参数整体转发给 v2/flights/custom 做服务端预填，无需 key，仅要求登录 */

@@ -3,10 +3,10 @@ import { MapController, type LegInfo, type RouteEntry } from './map/MapControlle
 import type { BaseMode, LabelLanguage } from './map/styleFactory';
 import { KEY_EDITABLE, hasRuntimeStadiaKey } from './map/styleFactory';
 import { findByCode, findAirportNear, type Airport } from './data/search';
-import { convertDistance, type Units } from './geo/greatCircle';
+import { convertDistance, haversineKm, type Units } from './geo/greatCircle';
 import {
-  decodePolyline, encodePolyline, fetchLatestOfp, parseSbfMeta, simbriefDispatchUrl,
-  encodeSbfMeta,
+  decodePolyline, encodePolyline, dispatchTypeForKm, fetchLatestOfp, parseSbfMeta,
+  simbriefDispatchUrl, encodeSbfMeta,
 } from './simbrief/simbrief';
 import { STRINGS, type Lang } from './i18n/strings';
 import { SearchPanel } from './components/SearchPanel';
@@ -378,9 +378,13 @@ export default function App() {
     localStorage.setItem(SB_USER_KEY, name);
     const orig = route.airports[0];
     const dest = route.airports[route.airports.length - 1];
-    // 传 ICAO（官方跳转格式与 v2 后端均按 ICAO 示例），机型默认 A359
+    // 传 ICAO（官方跳转格式与 v2 后端均按 ICAO 示例）；机型按大圆距离分档：<4000km 窄体 A21N，否则 A359
     window.open(
-      simbriefDispatchUrl(orig.icao || orig.iata, dest.icao || dest.iata),
+      simbriefDispatchUrl(
+        orig.icao || orig.iata,
+        dest.icao || dest.iata,
+        dispatchTypeForKm(haversineKm(orig, dest)),
+      ),
       '_blank',
       'noopener',
     );
