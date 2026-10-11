@@ -5,7 +5,8 @@ import { KEY_EDITABLE, hasRuntimeStadiaKey } from './map/styleFactory';
 import { findByCode, findAirportNear, type Airport } from './data/search';
 import { convertDistance, type Units } from './geo/greatCircle';
 import {
-  decodePolyline, encodePolyline, fetchLatestOfp, simbriefDispatchUrl,
+  decodePolyline, encodePolyline, fetchLatestOfp, parseSbfMeta, simbriefDispatchUrl,
+  encodeSbfMeta,
 } from './simbrief/simbrief';
 import { STRINGS, type Lang } from './i18n/strings';
 import { SearchPanel } from './components/SearchPanel';
@@ -44,28 +45,33 @@ function parseRoutesParam(v: string | null): { routes: RouteEntry[]; dropped: st
   return { routes, dropped };
 }
 
-// SimBrief 真实航路快照：每条一个 sbr=<polyline> 参数，首末航点解析回机场供 Pin/列表显示
+// SimBrief 真实航路快照：每条一个 sbr=<polyline> 参数，首末航点解析回机场供 Pin/列表显示；
+// 计划元数据（飞行时间/巡航速度）随 sbt= 参数按顺序一一对应（legacy 链接无 sbt → 退回估算）
 function parseSbrParam(q: URLSearchParams): { routes: RouteEntry[]; dropped: number } {
+  const sbrVals = q.getAll('sbr');
+  const sbtVals = q.getAll('sbt');
   const routes: RouteEntry[] = [];
   let dropped = 0;
-  for (const val of q.getAll('sbr')) {
+  sbrVals.forEach((val, i) => {
     let pts: { lat: number; lon: number }[];
     try {
       pts = decodePolyline(val);
     } catch {
       dropped++;
-      continue;
+      return;
     }
     if (pts.length < 2) {
       dropped++;
-      continue;
+      return;
     }
     const a = findAirportNear(pts[0].lat, pts[0].lon);
     const b = findAirportNear(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
     if (!a || !b) {
       dropped++;
-      continue;
+      return;
     }
+    // sbt 与 sbr 数量一致才按序配对（防御：手工编辑的链接两边可能不同步）
+    const meta = sbtVals.length === sbrVals.length ? parseSbfMeta(sbtVals[i]) : null;
     routes.push({
       id: nextId(),
       airports: [a, b],
@@ -73,8 +79,9 @@ function parseSbrParam(q: URLSearchParams): { routes: RouteEntry[]; dropped: num
       color: ROUTE_COLORS[routes.length % ROUTE_COLORS.length],
       width: 1,
       waypoints: pts.map((p) => ({ ident: '', lat: p.lat, lon: p.lon })),
+      ofp: meta ?? undefined,
     });
-  }
+  });
   return { routes, dropped };
 }
 
@@ -247,14 +254,17 @@ export default function App() {
   useEffect(() => {
     const q = new URLSearchParams();
     // 普通航线进 route 参数；真实航路（含航点）无法用机场代码表达，逐条存 polyline 快照 sbr=
+    const wpRoutes = routes.filter((r) => r.waypoints && r.waypoints.length >= 2);
     const codeRoutes = routes.filter((r) => !(r.waypoints && r.waypoints.length >= 2));
     if (codeRoutes.length) {
       q.set('route', codeRoutes.map((r) => r.airports.map((a) => a.iata || a.icao).join('-')).join(';'));
     }
-    for (const r of routes) {
-      if (r.waypoints && r.waypoints.length >= 2) {
-        q.append('sbr', encodePolyline(r.waypoints));
-      }
+    for (const r of wpRoutes) {
+      q.append('sbr', encodePolyline(r.waypoints!));
+    }
+    // 有任一条带计划元数据才写 sbt（全无时保持 URL 干净，legacy 语义）
+    if (wpRoutes.some((r) => r.ofp)) {
+      for (const r of wpRoutes) q.append('sbt', encodeSbfMeta(r.ofp));
     }
     if (lang !== 'zh') q.set('lang', lang);
     if (base !== 'vector') q.set('base', base);
@@ -268,10 +278,10 @@ export default function App() {
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
-  // extra：SimBrief 直达链接载入时附带的 waypoints / simbriefUser
+  // extra：SimBrief 直达链接载入时附带的 waypoints / simbriefUser / ofp 计划元数据
   const addRoutes = (
     groups: Airport[][],
-    extra?: Partial<Pick<RouteEntry, 'waypoints' | 'simbriefUser'>>,
+    extra?: Partial<Pick<RouteEntry, 'waypoints' | 'simbriefUser' | 'ofp'>>,
   ) => {
     if (!groups.length) return;
     const used = new Set(routes.map((r) => r.color.toLowerCase()));
@@ -318,7 +328,8 @@ export default function App() {
       deleteRoute(selectedId);
       return;
     }
-    patchRoute(selectedId, { airports, waypoints: undefined, simbriefUser: undefined });
+    // 经停一旦变动，原真实航路折线与计划元数据都不再成立，回退大圆弧 + 估算
+    patchRoute(selectedId, { airports, waypoints: undefined, simbriefUser: undefined, ofp: undefined });
     fitTargetRef.current = { id: selectedId };
   };
 
@@ -339,6 +350,7 @@ export default function App() {
                 airports: oa && da ? [oa, da] : x.airports,
                 waypoints: r.waypoints,
                 simbriefUser: username,
+                ofp: r.plan ?? undefined,
               }
             : x,
         ),
@@ -463,7 +475,11 @@ export default function App() {
         const oa = findByCode(r.originIcao) ?? findByCode(r.originIata);
         const da = findByCode(r.destIcao) ?? findByCode(r.destIata);
         if (!oa || !da) return;
-        addRoutes([[oa, da]], { waypoints: r.waypoints, simbriefUser: initial.sbf });
+        addRoutes([[oa, da]], {
+          waypoints: r.waypoints,
+          simbriefUser: initial.sbf,
+          ofp: r.plan ?? undefined,
+        });
       })
       .catch(() => {
         /* 直达链接拉取失败：地图照常打开，不打断 */

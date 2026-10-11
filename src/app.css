@@ -937,6 +937,30 @@ html.dark {
   color: var(--link);
 }
 
+/* 飞行时间行：SimBrief 计划数据或距离估算（≈ 前缀），附巡航速度说明 */
+.time-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 7px 0 2px;
+  border-top: 1px solid var(--hairline-strong);
+  position: relative;
+  z-index: 1;
+}
+
+.time-main {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--link);
+  font-size: 13px;
+}
+
+.time-note {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
 /* ---------- 分段按钮（右上菜单内嵌 / 摘要单位切换共用；磨砂材质与 .card 一致） ---------- */
 .seg {
   display: flex;

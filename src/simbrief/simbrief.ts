@@ -10,6 +10,16 @@ export interface SbfWaypoint {
   lon: number;
 }
 
+/** OFP 里的飞行计划元数据：飞行时间 + 巡航速度（供摘要卡直接展示，不再另行估算） */
+export interface SbfPlanMeta {
+  /** 预计空中时间（分钟，OFP est_time_enroute，已含风） */
+  timeMin: number;
+  /** 巡航真空速（kt）；OFP 缺该字段时为 null */
+  tasKts: number | null;
+  /** 巡航马赫数（归一为 "M.84" 形式）；OFP 缺该字段时为 null */
+  mach: string | null;
+}
+
 export interface SbfRoute {
   originIcao: string;
   originIata: string;
@@ -18,6 +28,8 @@ export interface SbfRoute {
   /** 含起降机场在内的完整航点序列（去掉相邻重复点后的顺序即真实航路形状） */
   waypoints: SbfWaypoint[];
   totalKm: number;
+  /** 飞行时间/巡航速度元数据；OFP 缺时间字段时为 null（此时摘要退回估算） */
+  plan: SbfPlanMeta | null;
   /** 内容签名（起降/总距离/航点数/首末航点），用于"生成后自动导入"的新旧判断 */
   sig: string;
 }
@@ -108,6 +120,56 @@ function parseCoord(v: unknown): number {
 
 const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
 
+/** "HH:MM:SS" / "HH:MM" → 分钟；非时钟格式返回 NaN */
+function clockToMin(s: string): number {
+  const parts = s.split(':').map((x) => Number(x));
+  if (parts.length < 2 || parts.length > 3 || parts.some((n) => !Number.isFinite(n))) return NaN;
+  const [h, m, sec = 0] = parts;
+  return h * 60 + m + sec / 60;
+}
+
+/**
+ * 飞行时间解析（分钟）。实测线上 fetcher 返回 "HH:MM:SS" 时钟串；旧样本见过纯数字秒。
+ * 纯数字无法从量纲区分分钟/秒，用"距离 ÷ 时间 = 平均速度是否落在飞机合理包络内"消歧
+ * （100–1100 km/h 覆盖涡桨到顺风巡航），两种都不合包络时按数值量级猜。
+ */
+function parseEteMinutes(v: unknown, totalKm: number): number | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (s.includes(':')) {
+    const min = clockToMin(s);
+    return Number.isFinite(min) && min > 0 ? min : null;
+  }
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const asMin = totalKm / (n / 60);
+  const asSec = asMin / 60;
+  const plausible = (kmh: number) => kmh >= 100 && kmh <= 1100;
+  if (plausible(asMin)) return n;
+  if (plausible(asSec)) return n / 60;
+  return n > 1440 ? n / 60 : n;
+}
+
+/** 巡航真空速（kt）：288kt↔M.44@FL090、400kt↔M.65 实测自洽；包络挡脏数据 */
+function parseTasKts(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 50 && n < 700 ? n : null;
+}
+
+/** 马赫数归一为 "M.84"：兼容 ".84" / "M.84" / "0.84" 写法 */
+function parseMach(v: unknown): string | null {
+  let s = String(v ?? '').trim();
+  if (!s) return null;
+  s = s.replace(/^[Mm]/, '');
+  if (s.startsWith('0.')) s = s.slice(1);
+  return /^\.?\d{1,2}(\.\d+)?$/.test(s) ? `M${s}` : null;
+}
+
+function firstNonEmpty(...vals: unknown[]): unknown {
+  return vals.find((x) => x != null && String(x).trim() !== '');
+}
+
 /** OFP 布局：成功时各分区在顶层、元数据在 fetch 键（个别包装会把全部分区塞进 fetch 键，两者都容） */
 function ofpRoot(data: any): any {
   return data && typeof data === 'object' && data.fetch?.navlog ? data.fetch : data;
@@ -143,6 +205,18 @@ export function parseOfp(data: unknown): SbfRoute {
   const dest = ofp?.destination ?? {};
   const originIcao = String(origin.icao_code ?? '').toUpperCase();
   const destIcao = String(dest.icao_code ?? '').toUpperCase();
+
+  const times = ofp?.times ?? {};
+  const eteRaw = firstNonEmpty(times.est_time_enroute, times.sched_time_enroute, times.est_block);
+  const ete = eteRaw !== undefined ? parseEteMinutes(eteRaw, totalKm) : null;
+  const plan: SbfPlanMeta | null = ete != null
+    ? {
+        timeMin: ete,
+        tasKts: parseTasKts(ofp?.general?.cruise_tas),
+        mach: parseMach(ofp?.general?.cruise_mach),
+      }
+    : null;
+
   // 签名纳入全部航点：任何一段航路变化都能被轮询识别为"新计划"
   const sig = [
     originIcao,
@@ -158,8 +232,31 @@ export function parseOfp(data: unknown): SbfRoute {
     destIata: String(dest.iata_code ?? '').toUpperCase(),
     waypoints,
     totalKm,
+    plan,
     sig,
   };
+}
+
+// ---- sbt= 参数编解码：随 sbr 快照持久化计划元数据 ----
+// 值形如 "<分钟>-<TAS kt>-<马赫>"（TAS/马赫可缺省），无元数据的快照写 "-"；
+// 与 sbr= 按出现顺序一一对应。legacy 链接没有 sbt 时整体退回估算，不受影响。
+
+export function encodeSbfMeta(m: SbfPlanMeta | null | undefined): string {
+  if (!m || !Number.isFinite(m.timeMin) || m.timeMin <= 0) return '-';
+  const tas = m.tasKts != null && Number.isFinite(m.tasKts) ? String(Math.round(m.tasKts)) : '';
+  const mach = m.mach && /^M\.?\d/.test(m.mach) ? m.mach : '';
+  return `${Math.round(m.timeMin)}-${tas}-${mach}`;
+}
+
+export function parseSbfMeta(raw: string | null | undefined): SbfPlanMeta | null {
+  if (!raw || raw === '-') return null;
+  const [min, tas, mach] = raw.split('-');
+  const timeMin = Number(min);
+  if (!Number.isFinite(timeMin) || timeMin <= 0 || timeMin > 3000) return null;
+  const tasN = Number(tas);
+  const tasKts = tas && Number.isFinite(tasN) && tasN > 50 && tasN < 700 ? tasN : null;
+  const m = mach && /^M(\.\d{1,2}|\d{1,2})$/.test(mach) ? mach : null;
+  return { timeMin, tasKts, mach: m };
 }
 
 /** 拉取某用户最新 OFP 并解析。用户不存在/尚未生成过计划时抛带 API 文案的 Error。

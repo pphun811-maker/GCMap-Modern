@@ -27,6 +27,16 @@ export const STRINGS = {
     notFound: (s: string) => `无法识别 "${s}"，请检查代码或名称`,
     total: '总距离',
     bearing: '初始航向',
+    flightTime: '预计飞行',
+    assumedCruise: '假设巡航',
+    noWind: '未计风',
+    cruise: '巡航',
+    duration: (min: number) => {
+      const total = Math.max(0, Math.round(min));
+      const h = Math.floor(total / 60);
+      const m = total % 60;
+      return h > 0 ? `${h}小时${String(m).padStart(2, '0')}分` : `${m}分钟`;
+    },
     vector: '矢量',
     satellite: '卫星',
     globeTip: '3D 地球视图：低缩放渲染为地球，放大后自动回到平面地图',
@@ -93,6 +103,17 @@ export const STRINGS = {
     notFound: (s: string) => `Cannot resolve "${s}" — check the code or name`,
     total: 'Total distance',
     bearing: 'initial hdg',
+    flightTime: 'Est. flight',
+    assumedCruise: 'assumed cruise',
+    noWind: 'winds not included',
+    cruise: 'cruise',
+    duration: (min: number) => {
+      const total = Math.max(0, Math.round(min));
+      const h = Math.floor(total / 60);
+      const m = total % 60;
+      if (h === 0) return `${m}m`;
+      return m > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${h}h`;
+    },
     vector: 'Vector',
     satellite: 'Satellite',
     globeTip: '3D globe view: renders as a globe at low zoom, returns to a flat map as you zoom in',

@@ -21,6 +21,10 @@ English | [简体中文](README.zh-CN.md)
   and line width, and new routes are assigned colors automatically.
 - **Great-circle geometry:** Per-leg distance and initial bearing, route totals, and
   km / mi / nm conversion. Routes crossing the antimeridian are drawn continuously.
+- **Flight time & cruise speed:** The summary card estimates flight time from distance at a
+  typical jet cruise (870 km/h plus a per-leg climb/descent allowance); when a SimBrief plan
+  is imported, the plan's own enroute time and cruise speed (Mach / TAS) are shown instead.
+  Speed follows the selected unit (km/h / mph / kt).
 - **Real-world routes via SimBrief:** A route can be replaced with its filed airway path: the
   app opens SimBrief's dispatch page pre-filled with the departure, arrival, and aircraft type
   (A359 by default); once the plan is generated there, it is imported back automatically and
@@ -82,6 +86,7 @@ Application state can be preset through query parameters; the URL is kept in syn
 | --------- | ------ | ----------- |
 | `route`   | `LHR-SIN-SYD;PEK-JFK` | Airport codes joined by `-` (nonstop or with stops); multiple routes separated by `;` |
 | `sbr`     | polyline-encoded waypoint list | Real-route snapshot, one per SimBrief route; written automatically and restored on load |
+| `sbt`     | `minutes-tas-mach` | Flight-plan metadata for the matching `sbr` snapshot (enroute time and cruise speed); omitted when none |
 | `sbf`     | SimBrief username | On load, imports that user's latest flight plan as a real route |
 | `lang`    | `zh`, `en` | Place-label language |
 | `base`    | `vector`, `satellite` | Basemap mode |

@@ -17,6 +17,7 @@ import {
 import { ensureProtocol } from './oceanTint';
 import { mountSpaceScene, type SpaceScene } from './spaceScene';
 import type { Airport } from '../data/search';
+import type { SbfPlanMeta } from '../simbrief/simbrief';
 import {
   greatCirclePoints, greatCircleMidpoint, haversineKm, initialBearing,
   destinationPoint, unwrapSequence, type Units,
@@ -47,6 +48,8 @@ export interface RouteEntry {
   waypoints?: RouteWaypoint[];
   /** 导入该真实航路所用 SimBrief 用户名（URL sbf 参数的来源） */
   simbriefUser?: string;
+  /** SimBrief 计划元数据（飞行时间/巡航速度）：随真实航路导入，⇄ 反向等经停变动时清除 */
+  ofp?: SbfPlanMeta;
 }
 
 // 航线标签文字颜色跟随航线色；描边恒为白晕（矢量/卫星一致），保证两种底图上都可读
