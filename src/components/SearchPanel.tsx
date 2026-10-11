@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { findByCode, searchAirports, type Airport } from '../data/search';
 import type { Strings } from '../i18n/strings';
 
@@ -43,6 +43,7 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const [sbName, setSbName] = useState('');
+  const listId = useId();
   const sbInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const rawRef = useRef<HTMLTextAreaElement>(null);
@@ -136,6 +137,8 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // IME 组合期（拼音上屏/候选操作）的 Enter/Backspace/Escape 交还输入法，不触发解析
+    if (e.nativeEvent.isComposing) return;
     // 用输入框实时值解析，避免 Enter 时 React 状态尚未提交的竞态
     const liveText = inputRef.current?.value ?? text;
     if (e.key === 'Enter') {
@@ -201,6 +204,7 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
   };
 
   const rawKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) insertRawNewline();
@@ -253,7 +257,7 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
                 <button
                   type="button"
                   className="input-tag-x"
-                  aria-label="remove"
+                  aria-label={t.removeTag(a.iata || a.icao)}
                   onClick={() => setTags(tags.filter((_, j) => j !== i))}
                 >
                   ×
@@ -266,6 +270,13 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
               value={text}
               spellCheck={false}
               placeholder={tags.length ? '' : t.searchPlaceholder}
+              role="combobox"
+              aria-expanded={suggestions.length > 0}
+              aria-controls={suggestions.length > 0 ? listId : undefined}
+              aria-activedescendant={
+                suggestions.length > 0 && active >= 0 ? `${listId}-opt-${active}` : undefined
+              }
+              aria-autocomplete="list"
               onChange={(e) => { setText(e.target.value); setError(null); setOpen(true); setActive(0); }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 150)}
@@ -312,10 +323,13 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
       </div>
 
       {suggestions.length > 0 && (
-        <div className="suggestions">
+        <div className="suggestions" id={listId} role="listbox" aria-label={t.searchPlaceholder}>
           {suggestions.map((a, i) => (
             <div
               key={`${a.iata}-${a.name}`}
+              id={`${listId}-opt-${i}`}
+              role="option"
+              aria-selected={i === active}
               className={`sug-item${i === active ? ' active' : ''}`}
               onMouseDown={(e) => { e.preventDefault(); pickSuggestion(a); }}
             >
@@ -365,14 +379,14 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
         </div>
       )}
 
-      {error && <div className="search-error">{error}</div>}
+      {error && <div className="search-error" role="alert">{error}</div>}
       {!error && (
         <div className="search-hint">
           {rawMode ? t.rawHint : selected.length ? t.commitHint : t.searchHint}
         </div>
       )}
       {sbf.msg && (
-        <div className={`sb-msg${sbf.msgError ? ' error' : ''}`}>
+        <div className={`sb-msg${sbf.msgError ? ' error' : ''}`} role="status">
           <span className="sb-msg-text">{sbf.msg}</span>
           <button
             type="button"

@@ -3,25 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <title>GCMap Modern · 大圆航线地图</title>
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // 临时排错钩子：把未捕获错误写到 DOM（上线前移除）
-      window.addEventListener('error', (e) => {
-        const d = document.createElement('pre');
-        d.id = 'err-hook';
-        d.textContent = 'ERR: ' + ((e.error && (e.error.stack || e.error.message)) || e.message);
-        document.body.appendChild(d);
-      });
-      window.addEventListener('unhandledrejection', (e) => {
-        const d = document.createElement('pre');
-        d.id = 'err-hook-promise';
-        d.textContent = 'REJ: ' + String((e.reason && (e.reason.stack || e.reason.message)) || e.reason);
-        document.body.appendChild(d);
-      });
-    </script>
+    <noscript>
+      <p style="position: fixed; left: 0; right: 0; top: 45%; text-align: center; font-family: sans-serif; color: #ccc">
+        GCMap Modern 需要启用 JavaScript · This app requires JavaScript
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

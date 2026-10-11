@@ -242,9 +242,12 @@ export function mountSpaceScene(map: MLMap): SpaceScene {
     atmo.style.opacity = '1';
   });
 
-  // 星空整体极缓慢的透明度呼吸，避免完全静止的死板感
+  // 星空整体极缓慢的透明度呼吸，避免完全静止的死板感；尊重系统减弱动态偏好
+  const reduceMotion =
+    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion) atmo.style.transition = 'none';
   let breathe: Animation | undefined;
-  if (typeof stars.animate === 'function') {
+  if (!reduceMotion && typeof stars.animate === 'function') {
     breathe = stars.animate(
       [{ opacity: '1' }, { opacity: '0.9' }],
       { duration: 6800, direction: 'alternate', iterations: Infinity, easing: 'ease-in-out' },

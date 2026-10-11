@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BaseMode } from '../map/styleFactory';
-import { validateStadiaKey } from '../map/styleFactory';
+import { validateStadiaKey, type StadiaKeyCheck } from '../map/styleFactory';
 import type { Lang, Strings } from '../i18n/strings';
 
 interface Props {
@@ -34,11 +34,11 @@ export function TopRightMenu({
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  // 卫星 key 导入：editing=输入态（无 key 时初始即输入态）；checking=验证中；err=上次验证失败
+  // 卫星 key 导入：editing=输入态（无 key 时初始即输入态）；checking=验证中；err=上次验证失败（区分无效/网络）
   const [keyEditing, setKeyEditing] = useState(false);
   const [keyVal, setKeyVal] = useState('');
   const [keyChecking, setKeyChecking] = useState(false);
-  const [keyErr, setKeyErr] = useState(false);
+  const [keyErr, setKeyErr] = useState<Exclude<StadiaKeyCheck, 'ok'> | null>(null);
 
   // 点外部 / Esc 关闭
   useEffect(() => {
@@ -65,17 +65,17 @@ export function TopRightMenu({
       // 空回车 = 收起输入态；从未设置过 key 时视为误触不动
       if (hasSatKey) {
         setKeyEditing(false);
-        setKeyErr(false);
+        setKeyErr(null);
         setKeyVal('');
       }
       return;
     }
     setKeyChecking(true);
-    setKeyErr(false);
-    const ok = await validateStadiaKey(key);
+    setKeyErr(null);
+    const res = await validateStadiaKey(key);
     setKeyChecking(false);
-    if (!ok) {
-      setKeyErr(true);
+    if (res !== 'ok') {
+      setKeyErr(res);
       return;
     }
     onSatKey(key);
@@ -102,14 +102,14 @@ export function TopRightMenu({
         </svg>
       </button>
       {open && (
-        <div className="card menu-panel" role="menu">
+        <div className="card menu-panel" aria-label={t.menu}>
           <div className="menu-row">
             <span className="menu-label">{t.baseMap}</span>
             <div className="seg seg-small">
-              <button className={base === 'vector' ? 'active' : ''} onClick={() => onBase('vector')}>
+              <button type="button" className={base === 'vector' ? 'active' : ''} aria-pressed={base === 'vector'} onClick={() => onBase('vector')}>
                 {t.vector}
               </button>
-              <button className={base === 'satellite' ? 'active' : ''} onClick={() => onBase('satellite')}>
+              <button type="button" className={base === 'satellite' ? 'active' : ''} aria-pressed={base === 'satellite'} onClick={() => onBase('satellite')}>
                 {t.satellite}
               </button>
             </div>
@@ -124,7 +124,7 @@ export function TopRightMenu({
                     className="key-change"
                     onClick={() => {
                       setKeyEditing(true);
-                      setKeyErr(false);
+                      setKeyErr(null);
                       setKeyVal('');
                     }}
                   >
@@ -146,7 +146,7 @@ export function TopRightMenu({
                     disabled={keyChecking}
                     onChange={(e) => {
                       setKeyVal(e.target.value);
-                      setKeyErr(false);
+                      setKeyErr(null);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -159,7 +159,8 @@ export function TopRightMenu({
                     {/* 是什么 / 免费吗 / 能得到什么——常驻说明；验证中与报错为临时状态行 */}
                     <div className="key-why">{t.keyWhy}</div>
                     {keyChecking && <div className="key-status">{t.keyChecking}</div>}
-                    {keyErr && <div className="key-status key-err-text">{t.keyInvalid}</div>}
+                    {keyErr === 'invalid' && <div className="key-status key-err-text">{t.keyInvalid}</div>}
+                    {keyErr === 'network' && <div className="key-status">{t.keyNetwork}</div>}
                     <a href={STADIA_SIGNUP_URL} target="_blank" rel="noreferrer noopener">
                       {t.keySignup}
                     </a>
@@ -216,10 +217,10 @@ export function TopRightMenu({
           <div className="menu-row">
             <span className="menu-label">{t.language}</span>
             <div className="seg seg-small">
-              <button className={lang === 'zh' ? 'active' : ''} onClick={() => onLang('zh')}>
+              <button type="button" className={lang === 'zh' ? 'active' : ''} aria-pressed={lang === 'zh'} onClick={() => onLang('zh')}>
                 中
               </button>
-              <button className={lang === 'en' ? 'active' : ''} onClick={() => onLang('en')}>
+              <button type="button" className={lang === 'en' ? 'active' : ''} aria-pressed={lang === 'en'} onClick={() => onLang('en')}>
                 EN
               </button>
             </div>

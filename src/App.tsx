@@ -18,6 +18,66 @@ const nextId = () => `rt-${++uid}`;
 
 const SB_USER_KEY = 'gcmap.sbfuser';
 
+// 多条航线用 ; 分隔（单条内机场用 - 连接），旧单航线链接自动兼容。
+// 无法识别的代码不静默丢弃：收集起来交给一次性提示（分享链接缺字符时可感知）
+function parseRoutesParam(v: string | null): { routes: RouteEntry[]; dropped: string[] } {
+  const routes: RouteEntry[] = [];
+  const dropped: string[] = [];
+  for (const part of (v ?? '').split(';')) {
+    const codes = part.split('-').map((c) => c.trim()).filter(Boolean);
+    if (!codes.length) continue;
+    const airports: Airport[] = [];
+    for (const c of codes) {
+      const a = findByCode(c);
+      if (a) airports.push(a);
+      else dropped.push(c);
+    }
+    if (!airports.length) continue;
+    routes.push({
+      id: nextId(),
+      airports,
+      visible: true,
+      color: ROUTE_COLORS[routes.length % ROUTE_COLORS.length],
+      width: 1,
+    });
+  }
+  return { routes, dropped };
+}
+
+// SimBrief 真实航路快照：每条一个 sbr=<polyline> 参数，首末航点解析回机场供 Pin/列表显示
+function parseSbrParam(q: URLSearchParams): { routes: RouteEntry[]; dropped: number } {
+  const routes: RouteEntry[] = [];
+  let dropped = 0;
+  for (const val of q.getAll('sbr')) {
+    let pts: { lat: number; lon: number }[];
+    try {
+      pts = decodePolyline(val);
+    } catch {
+      dropped++;
+      continue;
+    }
+    if (pts.length < 2) {
+      dropped++;
+      continue;
+    }
+    const a = findAirportNear(pts[0].lat, pts[0].lon);
+    const b = findAirportNear(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
+    if (!a || !b) {
+      dropped++;
+      continue;
+    }
+    routes.push({
+      id: nextId(),
+      airports: [a, b],
+      visible: true,
+      color: ROUTE_COLORS[routes.length % ROUTE_COLORS.length],
+      width: 1,
+      waypoints: pts.map((p) => ({ ident: '', lat: p.lat, lon: p.lon })),
+    });
+  }
+  return { routes, dropped };
+}
+
 interface UrlState {
   routes: RouteEntry[];
   lang: Lang;
@@ -27,59 +87,17 @@ interface UrlState {
   globe: boolean;
   dark: boolean;
   sbf: string;
-}
-
-// 多条航线用 ; 分隔（单条内机场用 - 连接），旧单航线链接自动兼容
-function parseRoutesParam(v: string | null): RouteEntry[] {
-  const out: RouteEntry[] = [];
-  for (const part of (v ?? '').split(';')) {
-    const airports = part
-      .split('-')
-      .map((c) => findByCode(c.trim()))
-      .filter((a): a is Airport => !!a);
-    if (!airports.length) continue;
-    out.push({
-      id: nextId(),
-      airports,
-      visible: true,
-      color: ROUTE_COLORS[out.length % ROUTE_COLORS.length],
-      width: 1,
-    });
-  }
-  return out;
-}
-
-// SimBrief 真实航路快照：每条一个 sbr=<polyline> 参数，首末航点解析回机场供 Pin/列表显示
-function parseSbrParam(q: URLSearchParams): RouteEntry[] {
-  const out: RouteEntry[] = [];
-  for (const val of q.getAll('sbr')) {
-    let pts: { lat: number; lon: number }[];
-    try {
-      pts = decodePolyline(val);
-    } catch {
-      continue;
-    }
-    if (pts.length < 2) continue;
-    const a = findAirportNear(pts[0].lat, pts[0].lon);
-    const b = findAirportNear(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
-    if (!a || !b) continue;
-    out.push({
-      id: nextId(),
-      airports: [a, b],
-      visible: true,
-      color: ROUTE_COLORS[out.length % ROUTE_COLORS.length],
-      width: 1,
-      waypoints: pts.map((p) => ({ ident: '', lat: p.lat, lon: p.lon })),
-    });
-  }
-  return out;
+  /** 深链里无法识别的部分（一次性提示用） */
+  dropped: { codes: string[]; snapshots: number };
 }
 
 function parseUrl(): UrlState {
   const q = new URLSearchParams(window.location.search);
+  const sbr = parseSbrParam(q);
+  const rt = parseRoutesParam(q.get('route'));
   return {
     // 快照航线在前、代码航线在后：初始选中（最后一条）落在用户最近在操作的代码航线上
-    routes: [...parseSbrParam(q), ...parseRoutesParam(q.get('route'))],
+    routes: [...sbr.routes, ...rt.routes],
     lang: q.get('lang') === 'en' ? 'en' : 'zh',
     base: q.get('base') === 'satellite' ? 'satellite' : 'vector',
     units: q.get('u') === 'mi' || q.get('u') === 'nm' ? (q.get('u') as Units) : 'km',
@@ -87,6 +105,7 @@ function parseUrl(): UrlState {
     globe: q.get('globe') === '1',
     dark: q.get('theme') !== 'light',
     sbf: q.get('sbf') ?? '',
+    dropped: { codes: rt.dropped, snapshots: sbr.dropped },
   };
 }
 
@@ -113,6 +132,8 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
   const [mapReady, setMapReady] = useState(false);
+  // 地图样式加载失败（load 永不触发，如断网/瓦片服务不可达）：30s 未就绪给出可恢复提示
+  const [mapFailed, setMapFailed] = useState(false);
   // 公开版：用户已填入自己的卫星 key（存 localStorage；填过则菜单收起为换 Key 按钮）
   const [satKeySet, setSatKeySet] = useState(hasRuntimeStadiaKey);
 
@@ -120,6 +141,12 @@ export default function App() {
   const controllerRef = useRef<MapController | null>(null);
   const readyRef = useRef(false);
   const fmtRef = useRef<(km: number, u: Units) => string>(() => '');
+  // 就绪竞态防线：onReady 同步的是"当前最新"状态，而不是挂载时的 URL 快照
+  //（用户可能在地图 load 完成前就通过 UI 添加了航线）
+  const routesRef = useRef(routes);
+  const unitsRef = useRef(units);
+  routesRef.current = routes;
+  unitsRef.current = units;
   // SimBrief 轮询：基线签名（undefined=基线未定 / null=无历史计划或基线拉取失败）/ 防重入 / 轮询函数
   const sbfBaselineRef = useRef<string | null | undefined>(undefined);
   const sbfBusyRef = useRef(false);
@@ -142,14 +169,24 @@ export default function App() {
       setMapReady(true);
       controller.setBase(initial.base);
       controller.setLabelsVisible(initial.labels);
-      if (initial.routes.length) {
-        setLegsMap(controller.syncRoutes(initial.routes, initial.units, (km, u) => fmtRef.current(km, u)));
-        controller.fitRoutes(initial.routes.filter((r) => r.visible));
+      const latest = routesRef.current;
+      if (latest.length) {
+        setLegsMap(controller.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));
+        controller.fitRoutes(latest.filter((r) => r.visible));
       }
     });
     return () => controller.map.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 样式加载失败兜底：onReady 永不触发时给出刷新重试入口（状态全在 URL，刷新即完整恢复）
+  useEffect(() => {
+    if (mapReady) return;
+    const timer = setTimeout(() => {
+      if (!readyRef.current) setMapFailed(true);
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, [mapReady]);
 
   // 语言切换：UI + 地图标注
   useEffect(() => {
@@ -338,13 +375,14 @@ export default function App() {
     const codes = `${orig.iata || orig.icao} → ${dest.iata || dest.icao}`;
     sbfBaselineRef.current = undefined;
     setSbfUi({ kind: 'waiting', username: name, routeId: route.id, codes });
-    // 记下当前最新计划的签名作基线；轮询到不同签名才自动导入（重复生成同一条计划时用"立即导入"兜底）
+    // 记下当前最新计划的签名作基线；轮询到不同签名才自动导入（重复生成同一条计划时用"立即导入"兜底）。
+    // 基线拉取失败保持 undefined（下轮重试），不能置 null——那会被当成"无历史计划"而误导入旧计划
     fetchLatestOfp(name)
       .then((r) => {
         sbfBaselineRef.current = r.sig;
       })
       .catch(() => {
-        sbfBaselineRef.current = null;
+        sbfBaselineRef.current = undefined;
       });
   };
 
@@ -381,7 +419,7 @@ export default function App() {
     fetchLatestOfp(username)
       .then((r) => {
         const base = sbfBaselineRef.current;
-        if (base === undefined) return; // 基线尚未确定，下一轮再比
+        if (base === undefined) return; // 基线尚未确定（含拉取失败待重试），下一轮再比
         if (base === null || r.sig !== base) return importSbf(username, routeId);
       })
       .catch(() => {
@@ -403,6 +441,17 @@ export default function App() {
       window.removeEventListener('focus', onFocus);
     };
   }, [sbfUi]);
+
+  // 深链里无法识别的部分：一次性提示（错误样式），可关闭。不静默丢
+  useEffect(() => {
+    const { codes, snapshots } = initial.dropped;
+    if (!codes.length && !snapshots) return;
+    const parts: string[] = [];
+    if (codes.length) parts.push(t.urlDroppedCodes(codes));
+    if (snapshots) parts.push(t.urlDroppedSnapshots(snapshots));
+    showSbfMsg(parts.join(' '), true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 直达链接 ?sbf=<用户名>：地图就绪后拉取最新 OFP 作为一条新航线
   useEffect(() => {
@@ -509,6 +558,14 @@ export default function App() {
       <div className="brand">
         <span className="brand-name">{t.appName}</span>
       </div>
+      {mapFailed && !mapReady && (
+        <div className="map-fail card" role="alert">
+          <span>{t.mapLoadFail}</span>
+          <button type="button" className="sb-go" onClick={() => location.reload()}>
+            {t.retry}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

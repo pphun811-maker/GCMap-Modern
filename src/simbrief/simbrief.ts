@@ -162,13 +162,16 @@ export function parseOfp(data: unknown): SbfRoute {
   };
 }
 
-/** 拉取某用户最新 OFP 并解析。用户不存在/尚未生成过计划时抛带 API 文案的 Error */
+/** 拉取某用户最新 OFP 并解析。用户不存在/尚未生成过计划时抛带 API 文案的 Error。
+ *  默认 15s 超时：浏览器 fetch 无超时，挂起会让轮询的防重入闸永远关闭。 */
 export async function fetchLatestOfp(username: string, signal?: AbortSignal): Promise<SbfRoute> {
   const url = `${FETCHER_URL}?username=${encodeURIComponent(username)}&json=1`;
+  const sig = signal ?? AbortSignal.timeout(15000);
   let res: Response;
   try {
-    res = await fetch(url, { signal });
+    res = await fetch(url, { signal: sig });
   } catch (e) {
+    if (e instanceof DOMException && e.name === 'TimeoutError') throw new Error('timeout (15s)');
     throw new Error(e instanceof Error ? e.message : 'network error');
   }
   let body: any = null;

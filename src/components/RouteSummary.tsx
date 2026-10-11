@@ -35,7 +35,7 @@ export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
         </span>
         <div className="seg seg-small">
           {(['km', 'mi', 'nm'] as Units[]).map((u) => (
-            <button key={u} className={u === units ? 'active' : ''} onClick={() => onUnits(u)}>
+            <button key={u} type="button" className={u === units ? 'active' : ''} aria-pressed={u === units} onClick={() => onUnits(u)}>
               {UNIT_LABEL[u]}
             </button>
           ))}

@@ -128,10 +128,27 @@ html.dark {
   left: 16px;
   z-index: 1000;
   width: 392px;
+  max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   transition: transform 0.28s ease, opacity 0.24s ease;
+}
+
+.flight-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.flight-panel::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+}
+
+.flight-panel::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .flight-panel.collapsed {
@@ -295,6 +312,14 @@ html.dark {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 键盘可选中（role=button + Enter/Space），焦点环跟随主题 */
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.route-codes:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .route-dist {
@@ -348,6 +373,11 @@ html.dark {
   border-radius: 16px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
   padding: 14px 16px 16px;
+}
+
+/* 容器被程序化移焦（对话框进入），不画焦点环 */
+.style-modal:focus {
+  outline: none;
 }
 
 .style-modal-head {
@@ -1194,9 +1224,7 @@ html.dark {
   left: 16px;
   z-index: 1000;
   pointer-events: none;
-}
-
-.brand-name {
+}.brand-name {
   font-size: 13px;
   font-weight: 700;
   color: #33332e;
@@ -1329,6 +1357,64 @@ html.dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
   box-shadow: var(--panel-shadow) !important;
 }
 
+/* ---------- 顶层错误边界（main.tsx 挂载）：渲染异常的兜底恢复卡 ---------- */
+.error-boundary {
+  position: absolute;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  background: var(--overlay);
+  backdrop-filter: blur(6px);
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+}
+
+.error-boundary-msg {
+  color: var(--text-muted);
+  font-size: 12px;
+  max-width: 480px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 地图样式加载失败（30s 未就绪）：底部居中可恢复提示 ---------- */
+.map-fail {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+/* ---------- 减弱动态效果偏好 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .flight-panel,
+  .panel-toggle,
+  .panel-toggle svg,
+  .switch::after,
+  .seg button,
+  .menu-btn,
+  .raw-toggle,
+  .sb-msg-x {
+    transition: none !important;
+  }
+
+  .menu-panel {
+    animation: none !important;
+  }
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 760px) {
   .flight-panel {
@@ -1353,16 +1439,21 @@ html.dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
     padding-right: 38px;
   }
 
-  /* 窄屏菜单钮挪到右下角（右上让给面板开合钮），菜单向上展开 */
+  /* 窄屏菜单钮挪到左下角：右下角是 maplibre 署名/缩放控件栈，重叠会遮挡合规署名。
+     署名条移动端为全宽多行（实测 320px 宽下 3 行 64px 高 + 10px 边距），82px 覆盖最坏换行；
+     菜单向上展开（左对齐），左下品牌水印在钮下方且 pointer-events:none */
   .map-menu {
     top: auto;
-    bottom: 14px;
-    right: 10px;
+    bottom: 82px;
+    left: 10px;
+    right: auto;
   }
 
   .menu-panel {
     top: auto;
     bottom: 48px;
-    transform-origin: bottom right;
+    left: 0;
+    right: auto;
+    transform-origin: bottom left;
   }
 }

@@ -10,10 +10,10 @@
 // two-airport route, and DOM state is polled until the map and route pins are
 // up (or a timeout). Exits 0 with "SMOKE-OK" on success, 1 on failure.
 
-import { app, BrowserWindow, Menu, shell } from 'electron';
+import { app, BrowserWindow, Menu, screen, shell } from 'electron';
 import { createServer } from 'node:http';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { join, extname, normalize, resolve } from 'node:path';
+import { extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -89,7 +89,10 @@ function startStaticServer(root) {
     const filePath = normalize(join(rootResolved, pathname));
     if (SMOKE) report(`REQ ${req.url} file=${filePath}`);
     try {
-      if (!filePath.startsWith(rootResolved)) {
+      // 目录穿越防御：必须是 root 的真子路径。早期用 startsWith(root) 前缀比较，
+      // 会被同名前缀目录（如 dist-other）绕过（2026-10-11 审查修复）
+      const rel = relative(rootResolved, filePath);
+      if (rel.startsWith('..') || isAbsolute(rel)) {
         res.writeHead(403, { 'Content-Type': 'text/plain' });
         res.end('Forbidden');
         return;
@@ -129,7 +132,17 @@ function loadBounds(fallback) {
       Number.isFinite(raw?.height) && raw.height >= 600 &&
       Number.isFinite(raw?.x) && Number.isFinite(raw?.y)
     ) {
-      return raw;
+      // 恢复前校验窗口与某台显示器的可视区相交（拔掉外接显示器后 state 会指向屏外）
+      try {
+        const wa = screen.getDisplayMatching(raw).workArea;
+        const intersects =
+          raw.x < wa.x + wa.width && raw.x + raw.width > wa.x &&
+          raw.y < wa.y + wa.height && raw.y + raw.height > wa.y;
+        if (intersects) return raw;
+      } catch {
+        /* screen 未就绪等异常：按有效处理（调用点在 whenReady 之后，罕见） */
+        return raw;
+      }
     }
   } catch {
     /* first run — use the fallback */

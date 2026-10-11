@@ -55,16 +55,25 @@ export function hasRuntimeStadiaKey(): boolean {
   return !!runtimeKey;
 }
 
-/** 验证 key 可用性：抓一张 z1 小瓦片，2xx 即有效（无效 key / 网络不通都会失败）。
- *  在保存前调用，挡住手滑输错的 key，避免卫星源悄悄全线 403。 */
-export async function validateStadiaKey(key: string): Promise<boolean> {
+/** 验证 key 可用性。两级判据（2026-10-11 审查后重做）：
+ *  ① 形状校验：Stadia key 是 UUID（8-4-4-4-12），垃圾输入本地立即拒绝；
+ *  ② 抓一张标准样式瓦片探测网络连通性（401 也归为无效）。
+ *  ⚠ 已实测：Stadia 对任何带 Origin 的浏览器请求都放行瓦片（垃圾 key 也 200），
+ *  key 只在非 CORS/API 调用上强制——所以客户端无法验证 key 是否真实存在，
+ *  这两级只能挡"手滑输错/粘错"和探测断网，别指望它发现格式正确但无效的 key。 */
+export type StadiaKeyCheck = 'ok' | 'invalid' | 'network';
+
+const STADIA_KEY_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function validateStadiaKey(key: string): Promise<StadiaKeyCheck> {
+  if (!STADIA_KEY_RE.test(key)) return 'invalid';
   try {
     const resp = await fetch(
-      `https://tiles-eu.stadiamaps.com/data/imagery/1/0/0.jpg?api_key=${encodeURIComponent(key)}`,
+      `https://tiles-eu.stadiamaps.com/tiles/alidade_smooth/1/0/0.png?api_key=${encodeURIComponent(key)}`,
     );
-    return resp.ok;
+    return resp.ok ? 'ok' : 'invalid';
   } catch {
-    return false;
+    return 'network';
   }
 }
 

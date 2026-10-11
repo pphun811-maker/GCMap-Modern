@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { LegInfo, RouteEntry } from '../map/MapController';
 import { convertDistance, type Units } from '../geo/greatCircle';
@@ -42,6 +42,7 @@ function EyeIcon({ off }: { off?: boolean }) {
 export function RouteList({ routes, selectedId, legsMap, units, onSelect, onToggle, onDelete, onStyle, t }: Props) {
   const [styleOpenId, setStyleOpenId] = useState<string | null>(null);
   const styleEntry = styleOpenId ? routes.find((r) => r.id === styleOpenId) : null;
+  const modalRef = useRef<HTMLDivElement>(null);
 
   // 样式弹窗支持 Esc 关闭（点击遮罩/×也可）
   useEffect(() => {
@@ -51,6 +52,14 @@ export function RouteList({ routes, selectedId, legsMap, units, onSelect, onTogg
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, [styleOpenId]);
+
+  // 弹窗打开移焦到容器（键盘/读屏进入对话框），关闭还焦到触发它的色点
+  useEffect(() => {
+    if (!styleOpenId) return;
+    const opener = document.activeElement as HTMLElement | null;
+    modalRef.current?.focus();
+    return () => opener?.focus?.();
   }, [styleOpenId]);
 
   return (
@@ -84,9 +93,22 @@ export function RouteList({ routes, selectedId, legsMap, units, onSelect, onTogg
                 className="route-dot"
                 style={{ background: r.color }}
                 title={t.style}
+                aria-label={t.style}
                 onClick={(e) => { e.stopPropagation(); setStyleOpenId(r.id); }}
               />
-              <span className="route-codes">{codes}</span>
+              <span
+                className="route-codes"
+                role="button"
+                tabIndex={0}
+                aria-pressed={r.id === selectedId}
+                onClick={() => onSelect(r.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelect(r.id);
+                  }
+                }}
+              >{codes}</span>
               {legs.length > 0 && (
                 <span className="route-dist">
                   {Math.round(convertDistance(totalKm, units)).toLocaleString('en-US')} {units}
@@ -109,7 +131,15 @@ export function RouteList({ routes, selectedId, legsMap, units, onSelect, onTogg
       {styleEntry &&
         createPortal(
           <div className="style-modal-backdrop" onMouseDown={() => setStyleOpenId(null)}>
-            <div className="style-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div
+              className="style-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${t.style} · ${styleEntry.airports.map((a) => a.iata || a.icao).join('-')}`}
+              tabIndex={-1}
+              ref={modalRef}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="style-modal-head">
                 <span className="style-modal-title">{t.style}</span>
                 <span className="style-modal-codes">
@@ -127,12 +157,14 @@ export function RouteList({ routes, selectedId, legsMap, units, onSelect, onTogg
               </div>
               <div className="style-row-label">{t.color}</div>
               <div className="swatches">
-                {ROUTE_COLORS.map((c) => (
+                {ROUTE_COLORS.map((c, i) => (
                   <button
                     key={c}
                     type="button"
                     className={`swatch${c.toLowerCase() === styleEntry.color.toLowerCase() ? ' active' : ''}`}
                     style={{ background: c }}
+                    aria-label={`${t.color} · ${t.colorNames[i] ?? c}`}
+                    aria-pressed={c.toLowerCase() === styleEntry.color.toLowerCase()}
                     onClick={() => onStyle(styleEntry.id, { color: c })}
                   />
                 ))}
@@ -142,6 +174,7 @@ export function RouteList({ routes, selectedId, legsMap, units, onSelect, onTogg
                 >
                   <input
                     type="color"
+                    aria-label={t.customColor}
                     value={styleEntry.color}
                     onChange={(e) => onStyle(styleEntry.id, { color: e.target.value })}
                   />
@@ -155,6 +188,7 @@ export function RouteList({ routes, selectedId, legsMap, units, onSelect, onTogg
                   max={3}
                   step={0.25}
                   value={styleEntry.width}
+                  aria-label={t.width}
                   onChange={(e) => onStyle(styleEntry.id, { width: Number(e.target.value) })}
                 />
                 <span className="width-val">×{styleEntry.width}</span>

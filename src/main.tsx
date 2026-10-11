@@ -4,5 +4,10 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../design-assets/palettes/apple-maps-tokens.css';
 import './app.css';
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+);
