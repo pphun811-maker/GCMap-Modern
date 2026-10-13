@@ -154,6 +154,15 @@ export default function App() {
   const unitsRef = useRef(units);
   routesRef.current = routes;
   unitsRef.current = units;
+  // base/labels/globe 同样有就绪竞态：readyRef 置位前的 UI 切换会被 effect 守卫跳过，
+  // onReady 必须按"当前最新" state 重放，否则地图停在初始模式、React 状态与地图永久脱节
+  //（2026-10-13 实测：地图就绪前点"卫星"→ 卫星层永不显示，即此洞）
+  const baseRef = useRef(base);
+  const labelsRef = useRef(labelsOn);
+  const globeRef = useRef(globeOn);
+  baseRef.current = base;
+  labelsRef.current = labelsOn;
+  globeRef.current = globeOn;
   // SimBrief 轮询：基线签名（undefined=基线未定 / null=无历史计划或基线拉取失败）/ 防重入 / 轮询函数
   const sbfBaselineRef = useRef<string | null | undefined>(undefined);
   const sbfBusyRef = useRef(false);
@@ -174,8 +183,10 @@ export default function App() {
     controller.onReady(() => {
       readyRef.current = true;
       setMapReady(true);
-      controller.setBase(initial.base);
-      controller.setLabelsVisible(initial.labels);
+      controller.setBase(baseRef.current);
+      controller.setLabelsVisible(labelsRef.current);
+      // globe 初始值已在构造/buildStyle 内置，只重放就绪前发生过的切换
+      if (globeRef.current !== initial.globe) controller.setGlobe(globeRef.current);
       const latest = routesRef.current;
       if (latest.length) {
         setLegsMap(controller.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));
