@@ -6,7 +6,7 @@ productName: GCMap Modern
 copyright: MIT License - pphun811-maker and contributors
 
 directories:
-  output: release
+  output: release/pkg3
   buildResources: build
 
 # Only the shell and the web build go into the package: no sources, no

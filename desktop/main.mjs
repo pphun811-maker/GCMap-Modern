@@ -11,11 +11,10 @@
 // two-airport route, and DOM state is polled until the map and route pins are
 // up (or a timeout). Exits 0 with "SMOKE-OK" on success, 1 on failure.
 
-import { app, BrowserWindow, Menu, screen, shell } from 'electron';
-import { createServer } from 'node:http';
+import { app, BrowserWindow, Menu, net, protocol, screen, shell } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SMOKE = process.env.GCMAP_SMOKE === '1' || process.argv.includes('--smoke');
@@ -30,6 +29,18 @@ const APP_ID = 'io.github.pphun811-maker.gcmap-modern';
 // and sends every external link to the system browser, so the reduced
 // isolation costs very little here. Must be set before app is ready.
 app.commandLine.appendSwitch('no-sandbox');
+
+// 2026-10-15: after a Windows/driver change the GPU process now crash-loops on
+// this machine (exit_code=0xC0000005, "GPU process isn't usable"), and modern
+// Chromium no longer falls back to SwiftShader WebGL on its own — maplibre's
+// WebGL2 context request then deadlocks the renderer main thread and the whole
+// window freezes (looks like "satellite basemap never loads"). Rendering fully
+// on the CPU (SwiftShader) sidesteps the broken GPU process entirely; WebGL2
+// stays available via the unsafe-swiftshader opt-in. Slightly slower panning,
+// but a working map. Remove both switches once the GPU driver situation is
+// fixed on this machine.
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
 // Synchronous console writer: the smoke-check report must survive an
 // immediate app.exit(), which drops buffered async stdout writes.
@@ -60,94 +71,46 @@ function log(msg) {
 }
 
 // ---------------------------------------------------------------------------
-// Static file server (loopback only)
+// Content location: the custom `app://` scheme.
+// The previous design served dist over a loopback HTTP server, but the user's
+// proxy client started refusing loopback requests (502) around 2026-10-13 and
+// Chromium does not honour the Windows-style `127.*` proxy-bypass wildcard, so
+// every renderer request for http://127.0.0.1:39187 was hijacked to the proxy
+// and the window froze. `app://` is handled in-process (protocol.handle) and
+// never touches the network stack — no proxy, no port, no CORS exposure beyond
+// what the map tiles already need. A standard+secure scheme keeps ES modules
+// and fetch working (plain file:// would block module loading), and the origin
+// `app://gcmap` is stable across launches, so localStorage (SimBrief username
+// etc.) survives restarts without depending on a port number at all.
 // ---------------------------------------------------------------------------
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8',
-};
+const DIST_ROOT = resolve(join(__dirname, 'dist'));
 
-function listenOn(server, port) {
-  return new Promise((resolve, reject) => {
-    const onError = (error) => {
-      cleanup();
-      reject(error);
-    };
-    const onListening = () => {
-      cleanup();
-      resolve(server.address().port);
-    };
-    const cleanup = () => {
-      server.off('error', onError);
-      server.off('listening', onListening);
-    };
-    server.on('error', onError);
-    server.on('listening', onListening);
-    server.listen(port, '127.0.0.1');
-  });
+// Must run before app ready.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+]);
+
+function appPageUrl() {
+  return SMOKE ? 'app://gcmap/index.html?route=PVG-NRT' : 'app://gcmap/index.html';
 }
 
-function startStaticServer(root) {
-  const rootResolved = resolve(root);
-  // Synchronous reads on purpose: all files served here are small, local and
-  // read once per request, and synchronous fs avoids the async I/O pool which
-  // has proven unreliable in this runtime.
-  const server = createServer({ keepAlive: true }, (req, res) => {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    let pathname = decodeURIComponent(url.pathname);
+function registerAppProtocol() {
+  protocol.handle('app', (request) => {
+    const u = new URL(request.url);
+    let pathname = decodeURIComponent(u.pathname);
     if (pathname.endsWith('/')) pathname += 'index.html';
-    const filePath = normalize(join(rootResolved, pathname));
-    if (SMOKE) report(`REQ ${req.url} file=${filePath}`);
-    try {
-      // 目录穿越防御：必须是 root 的真子路径。早期用 startsWith(root) 前缀比较，
-      // 会被同名前缀目录（如 dist-other）绕过（2026-10-11 审查修复）
-      const rel = relative(rootResolved, filePath);
-      if (rel.startsWith('..') || isAbsolute(rel)) {
-        res.writeHead(403, { 'Content-Type': 'text/plain' });
-        res.end('Forbidden');
-        return;
-      }
-      const body = readFileSync(filePath);
-      res.writeHead(200, {
-        'Content-Type': MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream',
-        'Cache-Control': 'no-store',
-      });
-      res.end(body);
-      if (SMOKE) report(`RESP ${req.url} ${body.length}B`);
-    } catch (error) {
-      if (SMOKE) report(`REQ-ERR ${req.url} ${String(error)}`);
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not found');
+    const filePath = resolve(join(DIST_ROOT, pathname));
+    // Path traversal defense: must be a real subpath of dist/ (2026-10-11 review).
+    const rel = relative(DIST_ROOT, filePath);
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+      return new Response('Forbidden', { status: 403 });
     }
+    if (SMOKE) report(`APP-REQ ${pathname}`);
+    // net.fetch over a file URL reads through Electron's asar support and
+    // sets the MIME type from the extension automatically.
+    return net.fetch(pathToFileURL(filePath).toString());
   });
-  // 固定首选端口（避开 Windows 动态端口段 49152+）：localStorage 按"源"（协议+host:port）
-  // 隔离，随机端口意味着每次启动源都不同，SimBrief 用户名等本地偏好会随端口漂移而丢失。
-  // 首选段全忙才退回随机端口——该会话内偏好仍可用，只是不跨启动持久（罕见兜底）。
-  const preferred = [39187, 39188, 39189];
-  return {
-    server,
-    start: async () => {
-      for (const p of preferred) {
-        try {
-          return { port: await listenOn(server, p), stable: true };
-        } catch (error) {
-          if (error?.code !== 'EADDRINUSE') throw error;
-        }
-      }
-      return { port: await listenOn(server, 0), stable: false };
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +226,11 @@ async function runSmoke(win) {
     last.canvas && last.pins >= 2 && last.brand && last.timeRow && last.tiles >= 1,
   );
   report(`${ok ? 'SMOKE-OK' : 'SMOKE-FAIL'} ${JSON.stringify(last)}`);
-  app.exit(ok ? 0 : 1);
+  // SIGKILL, not app.exit/process.exit: on this machine both can hang the
+  // shutdown (same family as the close-path stall), leaving a zombie that
+  // holds the single-instance lock so the NEXT launch exits silently with no
+  // output. All smoke output is written synchronously, so nothing is lost.
+  process.kill(process.pid, 'SIGKILL');
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +238,8 @@ async function runSmoke(win) {
 // ---------------------------------------------------------------------------
 
 if (!app.requestSingleInstanceLock()) {
-  app.quit();
+  // Hard exit: app.quit() can hang on this machine (see close handler below).
+  process.kill(process.pid, 'SIGKILL');
 } else {
   app.setAppUserModelId(APP_ID);
 
@@ -310,17 +278,16 @@ if (!app.requestSingleInstanceLock()) {
     if (!SMOKE && !DEBUG) Menu.setApplicationMenu(null);
     log('menu configured');
 
-    const { start } = startStaticServer(join(__dirname, 'dist'));
-    const { port, stable } = await start();
-    const appUrl = `http://127.0.0.1:${port}`;
-    log(`server listening port=${port} stable=${stable}`);
+    registerAppProtocol();
+    const appUrl = appPageUrl();
+    log(`page url=${appUrl.slice(0, 80)}`);
 
     // Both modes show the window from birth. On this machine a deferred
     // win.show() (the usual show:false + ready-to-show pattern) can stall the
     // main process, so the window is visible right away; the dark
     // backgroundColor prevents a white flash while the page renders.
     const windowOptions = SMOKE
-      ? { x: -32000, y: -32000, show: true, skipTaskbar: true }
+      ? { x: 20, y: 20, width: 500, height: 400, show: true, skipTaskbar: true }
       : { ...loadBounds({ width: 1440, height: 900 }), show: true };
 
     mainWindow = new BrowserWindow({
@@ -384,7 +351,8 @@ if (!app.requestSingleInstanceLock()) {
       process.kill(process.pid, 'SIGKILL');
     });
 
-    const startUrl = SMOKE ? `${appUrl}/?route=PVG-NRT` : appUrl;
+    // appPageUrl() already bakes the smoke query parameter in.
+    const startUrl = appUrl;
     if (SMOKE) {
       const heartbeat = setInterval(() => report(`HB tiles=${smokeTileHits}`), 3000);
       heartbeat.unref?.();
