@@ -655,6 +655,13 @@ html.dark {
   background: var(--fill-hover);
 }
 
+/* 搜索卡提升层级：.card 的 backdrop-filter 会创建层叠上下文，建议下拉的
+   z-index 只在卡内生效；不加这条，DOM 顺序更靠后的航线/摘要卡会盖住下拉 */
+.search-card {
+  position: relative;
+  z-index: 2;
+}
+
 .suggestions {
   position: absolute;
   top: 58px;
