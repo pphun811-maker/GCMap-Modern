@@ -135,22 +135,33 @@ html.dark {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
   transition: transform 0.28s ease, opacity 0.24s ease;
 }
 
-.flight-panel::-webkit-scrollbar {
+/* 滚动边界只在下方卡片堆（航线列表 + 摘要），搜索卡永远完整可见：
+   否则下拉建议（卡片内绝对定位、会伸出卡片底部）在面板矮时被 overflow 裁掉
+   并出现"只显示一行 + 滚动条"的破相（2026-10-16 用户报告，即 2026-10-15
+   max-height 滚动修复的回归面） */
+.panel-lower {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.panel-lower::-webkit-scrollbar {
   width: 8px;
 }
 
-.flight-panel::-webkit-scrollbar-thumb {
+.panel-lower::-webkit-scrollbar-thumb {
   background: var(--scroll-thumb);
   border-radius: 4px;
 }
 
-.flight-panel::-webkit-scrollbar-track {
+.panel-lower::-webkit-scrollbar-track {
   background: transparent;
 }
 

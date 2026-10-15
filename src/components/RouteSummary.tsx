@@ -77,7 +77,7 @@ export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
       const dep = s.departure && tz ? localTime(s.departure, tz) : null;
       return {
         code: s.code,
-        city: route.airports[i].city,
+        name: route.airports[i].name,
         arr,
         dep,
         arrDay: arr ? dayDelta(base.ymd, arr.ymd) : null,
@@ -192,7 +192,7 @@ export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
           {timeline.map((s, i) => (
             <div className="tl-row" key={`${s.code}-${i}`}>
               <b className="tl-code">{s.code}</b>
-              <span className="tl-city">{s.city}</span>
+              <span className="tl-city">{s.name}</span>
               <span className="tl-times">
                 {s.arr && (
                   <span>

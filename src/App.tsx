@@ -581,25 +581,27 @@ export default function App() {
           }}
         />
         {routes.length > 0 && (
-          <RouteList
-            routes={routes}
-            selectedId={selectedId}
-            legsMap={legsMap}
-            units={units}
-            onSelect={setSelectedId}
-            onToggle={toggleRoute}
-            onDelete={deleteRoute}
-            onStyle={styleRoute}
-            t={t}
-          />
+          <div className="panel-lower">
+            <RouteList
+              routes={routes}
+              selectedId={selectedId}
+              legsMap={legsMap}
+              units={units}
+              onSelect={setSelectedId}
+              onToggle={toggleRoute}
+              onDelete={deleteRoute}
+              onStyle={styleRoute}
+              t={t}
+            />
+            <RouteSummary
+              legs={selected ? legsMap[selected.id] ?? [] : []}
+              route={selected}
+              units={units}
+              onUnits={setUnits}
+              t={t}
+            />
+          </div>
         )}
-        <RouteSummary
-          legs={selected ? legsMap[selected.id] ?? [] : []}
-          route={selected}
-          units={units}
-          onUnits={setUnits}
-          t={t}
-        />
       </div>
       <button
         type="button"
