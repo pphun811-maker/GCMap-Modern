@@ -86,6 +86,9 @@ interface RouteRecord {
   geoSig: string;
   /** 生长动画进行中（期间小飞机不起飞，重同步会先收场） */
   growing: boolean;
+  /** 当前颜色与显隐（小飞机总开关补飞时要用，避免为此重走一次 renderRoute） */
+  color: string;
+  visible: boolean;
   plane: { marker: Marker; el: HTMLElement } | null;
   planePath: PlanePath | null;
   /** 巡航循环时长（秒，∝ 估算飞行时间）与进度 t∈[0,1)、帧间缓存的当前段索引 */
@@ -106,6 +109,8 @@ export class MapController {
   private lastTickNow = 0;
   // 本次 syncRoutes 内已启动的生长动画数（多条航线错峰）
   private growCount = 0;
+  // 装饰小飞机总开关（默认关闭，右上菜单控制；URL plane=1）
+  private planesEnabled = false;
 
   constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false) {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议；
@@ -366,7 +371,7 @@ export class MapController {
         },
         beforeId,
       );
-      rec = { markers: [], codesSig: '', geoSig, growing: false, plane: null, planePath: null, planeLoopSec: 10, planeT: 0, planeSeg: 0 };
+      rec = { markers: [], codesSig: '', geoSig, growing: false, color: e.color, visible: e.visible, plane: null, planePath: null, planeLoopSec: 10, planeT: 0, planeSeg: 0 };
       this.routes.set(e.id, rec);
       this.routeLabelLayers.add(labelLayer);
     } else {
@@ -474,11 +479,13 @@ export class MapController {
     }
     for (const m of rec.markers) m.getElement().style.display = e.visible ? '' : 'none';
     if (rec.plane) rec.plane.el.style.display = e.visible ? '' : 'none';
+    rec.color = e.color;
+    rec.visible = e.visible;
     // 会话中途开启"减弱动态效果"：现役小飞机立即回收，也不再补飞
     if (prefersReducedMotion() && rec.plane) this.removePlane(rec);
-    // 小飞机兜底起飞：非生长状态的可见航线保证有一架在飞
-    //（生长完成后由 startGrowth 起飞；取消生长 / 减动效恢复 / 显隐切换走这里）
-    if (!rec.growing && e.visible && !prefersReducedMotion() && rec.planePath && !rec.plane) {
+    // 小飞机兜底起飞：总开关开启时，非生长状态的可见航线保证有一架在飞
+    //（生长完成后由 startGrowth 起飞；取消生长 / 开关切换 / 显隐切换走这里）
+    if (this.planesEnabled && !rec.growing && e.visible && !prefersReducedMotion() && rec.planePath && !rec.plane) {
       this.spawnPlane(e.id, rec, e.color);
     }
 
@@ -523,8 +530,25 @@ export class MapController {
     );
   }
 
+  /** 装饰小飞机总开关（右上菜单；URL plane=1）。关闭=全线撤机；开启=可见航线立即补飞 */
+  setPlanesEnabled(on: boolean): void {
+    if (this.planesEnabled === on) return;
+    this.planesEnabled = on;
+    for (const [id, rec] of this.routes) {
+      if (!on) {
+        this.cancelAnim(`plane:${id}`);
+        this.removePlane(rec);
+        continue;
+      }
+      if (rec.visible && !rec.growing && rec.planePath && !rec.plane && !prefersReducedMotion()) {
+        this.spawnPlane(id, rec, rec.color);
+      }
+    }
+  }
+
   /** 装饰小飞机起飞：沿 planePath 循环巡航，循环时长 ∝ 估算飞行时间。纯观感，与真实航迹无关 */
   private spawnPlane(routeId: string, rec: RouteRecord, color: string): void {
+    if (!this.planesEnabled || prefersReducedMotion()) return; // 总开关关闭时不起飞
     const path = rec.planePath;
     if (!path || path.coords.length < 2 || path.totalKm <= 0) return;
     this.removePlane(rec);

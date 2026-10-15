@@ -971,6 +971,113 @@ html.dark {
   color: var(--text-faint);
 }
 
+/* ---------- 时区到达时间线（路线③）：出发时刻输入 + 各站当地时间 ---------- */
+.time-line {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 2px;
+  padding: 7px 0 2px;
+  border-top: 1px solid var(--hairline-strong);
+}
+
+.tl-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tl-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.tl-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--fill-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  /* 显式主题色：卡片没有全局 color，靠继承会拿到 UA 黑字（深色下不可读） */
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: background 0.15s;
+}
+
+.tl-input:focus {
+  background: var(--field-focus-bg);
+  border-color: var(--focus-ring);
+}
+
+.tl-now {
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text);
+  border-radius: 7px;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tl-now:hover {
+  background: var(--fill);
+}
+
+.tl-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-code {
+  font-weight: 700;
+  min-width: 36px;
+  color: var(--text-strong);
+}
+
+.tl-city {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+}
+
+.tl-times {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.tl-sep {
+  color: var(--text-faint);
+}
+
+.tl-day {
+  color: var(--link);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.tl-note {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+html.dark .tl-input {
+  color-scheme: dark;
+}
+
 /* ---------- 分段按钮（右上菜单内嵌 / 摘要单位切换共用；磨砂材质与 .card 一致） ---------- */
 .seg {
   display: flex;

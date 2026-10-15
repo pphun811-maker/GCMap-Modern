@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { LegInfo, RouteEntry } from '../map/MapController';
 import {
   compassPoint, convertDistance, haversineKm, KM_PER_NM, type Units,
@@ -5,9 +6,15 @@ import {
 import {
   estimateLegMinutes, NARROWBODY_CRUISE, TYPE_THRESHOLD_KM, WIDEBODY_CRUISE,
 } from '../geo/flightTime';
+import {
+  computeTimeline, dayDelta, initTzLookup, localTime, nowInZone, tzAt, tzLookupReady, zonedToUtc,
+} from '../geo/flightTimeline';
 import type { Strings } from '../i18n/strings';
 
 const UNIT_LABEL: Record<Units, string> = { km: 'km', mi: 'mi', nm: 'nm' };
+
+/** "+1d" 形式的跨天标记（同日返回空串） */
+const dayTag = (d: number | null) => (d != null && d > 0 ? ` +${d}d` : '');
 
 /** 马赫显示归一为 "M0.84"（OFP 原值形如 "M.84"） */
 const fmtMach = (raw: string) => {
@@ -29,6 +36,56 @@ interface Props {
 }
 
 export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
+  // ---- 时区到达时间线（路线③）：tz 查询懒加载 + 出发时刻（出发地当地墙钟，语义见 zonedToUtc） ----
+  const [tzReady, setTzReady] = useState(tzLookupReady());
+  const [departInput, setDepartInput] = useState<string | null>(null);
+  useEffect(() => {
+    if (tzReady) return;
+    void initTzLookup()
+      .then(() => setTzReady(true))
+      .catch(() => {
+        /* tz chunk 加载失败：时间线整体隐藏，不影响其它功能 */
+      });
+  }, [tzReady]);
+
+  const stopsAirports = route?.airports ?? [];
+  const originTz = tzReady && stopsAirports.length >= 2 ? tzAt(stopsAirports[0].lat, stopsAirports[0].lon) : null;
+  // 未手动输入时跟随"现在"（出发地当地墙钟）；手动输入后固定，直到点"现在"复位
+  const departValue = departInput ?? (originTz ? nowInZone(originTz) : '');
+  const departAt = useMemo(
+    () => (departValue && originTz ? zonedToUtc(departValue, originTz) : null),
+    [departValue, originTz],
+  );
+
+  const timeline = useMemo(() => {
+    if (!route || !departAt || Number.isNaN(departAt.getTime())) return null;
+    if (!route.airports.every((a) => tzAt(a.lat, a.lon))) return null;
+    // SimBrief 航线用 OFP 真实空中时间（单段），否则按段距离分档估算
+    const legMin =
+      route.ofp && legs.length === 1 ? [route.ofp.timeMin] : legs.map((l) => estimateLegMinutes(l.km));
+    const stops = computeTimeline(
+      route.airports.map((a) => a.iata || a.icao),
+      legMin,
+      departAt,
+    );
+    const baseTz = tzAt(route.airports[0].lat, route.airports[0].lon);
+    const base = baseTz ? localTime(departAt, baseTz) : null;
+    if (!base) return null;
+    return stops.map((s, i) => {
+      const tz = tzAt(route.airports[i].lat, route.airports[i].lon);
+      const arr = s.arrival && tz ? localTime(s.arrival, tz) : null;
+      const dep = s.departure && tz ? localTime(s.departure, tz) : null;
+      return {
+        code: s.code,
+        city: route.airports[i].city,
+        arr,
+        dep,
+        arrDay: arr ? dayDelta(base.ymd, arr.ymd) : null,
+        depDay: dep ? dayDelta(base.ymd, dep.ymd) : null,
+      };
+    });
+  }, [route, legs, departAt]);
+
   if (legs.length === 0) return null;
   const totalKm = legs.reduce((s, l) => s + l.km, 0);
   const fmt = (km: number) =>
@@ -113,6 +170,49 @@ export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
         </span>
         <span className="time-note">{timeNote}</span>
       </div>
+      {timeline && (
+        <div className="time-line">
+          <div className="tl-head">
+            <label className="tl-label" htmlFor="depart-at">{t.departAt}</label>
+            <input
+              id="depart-at"
+              type="datetime-local"
+              className="tl-input"
+              value={departValue}
+              onChange={(e) => setDepartInput(e.target.value)}
+            />
+            <button
+              type="button"
+              className="tl-now"
+              onClick={() => originTz && setDepartInput(nowInZone(originTz))}
+            >
+              {t.now}
+            </button>
+          </div>
+          {timeline.map((s, i) => (
+            <div className="tl-row" key={`${s.code}-${i}`}>
+              <b className="tl-code">{s.code}</b>
+              <span className="tl-city">{s.city}</span>
+              <span className="tl-times">
+                {s.arr && (
+                  <span>
+                    {s.arr.time}
+                    <span className="tl-day">{dayTag(s.arrDay)}</span> {t.arr}
+                  </span>
+                )}
+                {s.arr && s.dep && <span className="tl-sep">·</span>}
+                {s.dep && (
+                  <span>
+                    {s.dep.time}
+                    <span className="tl-day">{dayTag(s.depDay)}</span> {t.dep}
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+          <span className="tl-note">{legs.length > 1 ? t.localNoteMulti : t.localNoteSingle}</span>
+        </div>
+      )}
     </div>
   );
 }

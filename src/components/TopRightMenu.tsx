@@ -15,6 +15,9 @@ interface Props {
   onLabels: (v: boolean) => void;
   dark: boolean;
   onDark: (v: boolean) => void;
+  /** 装饰小飞机巡航开关（默认关） */
+  planeOn: boolean;
+  onPlane: (v: boolean) => void;
   t: Strings;
   /** 公开构建（无内置 key）才显示卫星 key 导入入口 */
   keyEditable: boolean;
@@ -29,7 +32,7 @@ const STADIA_SIGNUP_URL = 'https://client.stadiamaps.com/signup/';
 
 /** 右上角唯一入口：一个按钮拉起菜单，收拢底图/3D/回正/地名/语言/深色模式全部控件 */
 export function TopRightMenu({
-  base, onBase, globeOn, onGlobe, onReset, lang, onLang, labelsOn, onLabels, dark, onDark, t,
+  base, onBase, globeOn, onGlobe, onReset, lang, onLang, labelsOn, onLabels, dark, onDark, planeOn, onPlane, t,
   keyEditable, hasSatKey, onSatKey,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -234,6 +237,18 @@ export function TopRightMenu({
               aria-checked={dark}
               aria-label={t.darkMode}
               onClick={() => onDark(!dark)}
+            />
+          </div>
+          <div className="menu-row">
+            <span className="menu-label">{t.planeRow}</span>
+            <button
+              type="button"
+              className={`switch${planeOn ? ' on' : ''}`}
+              role="switch"
+              aria-checked={planeOn}
+              aria-label={t.planeRow}
+              title={t.planeTip}
+              onClick={() => onPlane(!planeOn)}
             />
           </div>
         </div>

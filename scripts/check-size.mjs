@@ -15,6 +15,7 @@ const RULES = [
   { re: /^MapController-.*\.js$/, maxKb: 320, gz: true, label: 'maplibre 异步 chunk' },
   { re: /^MapController-.*\.css$/, maxKb: 12, gz: true, label: 'maplibre 异步 CSS' },
   { re: /^airports-.*\.js$/, maxKb: 380, gz: true, label: '机场数据异步 chunk' },
+  { re: /^tz-.*\.js$/, maxKb: 36, gz: true, label: 'tz-lookup 懒加载 chunk（时间线用到才拉取）' },
   { re: /^global-lc-merc-[A-Za-z0-9_-]{8}\.webp$/, maxKb: 220, gz: false, label: '绿毯 SD（无损 webp）' },
   { re: /^global-lc-merc-hd-[A-Za-z0-9_-]{8}\.webp$/, maxKb: 2300, gz: false, label: '绿毯 HD（无损 webp，缩放≥4 级才拉取）' },
 ];

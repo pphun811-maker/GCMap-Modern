@@ -95,6 +95,8 @@ interface UrlState {
   globe: boolean;
   dark: boolean;
   sbf: string;
+  /** 装饰小飞机巡航开关（默认关） */
+  plane: boolean;
 }
 
 // 非航线字段首帧同步解析（不依赖机场数据，chunk 加载窗口内也即时生效）
@@ -107,6 +109,7 @@ function parseUrl(q: URLSearchParams): UrlState {
     globe: q.get('globe') === '1',
     dark: q.get('theme') !== 'light',
     sbf: q.get('sbf') ?? '',
+    plane: q.get('plane') === '1',
   };
 }
 
@@ -140,6 +143,7 @@ export default function App() {
   const [labelsOn, setLabelsOn] = useState(initial.labels);
   const [globeOn, setGlobeOn] = useState(initial.globe);
   const [dark, setDark] = useState(initial.dark);
+  const [planeOn, setPlaneOn] = useState(initial.plane);
   const [legsMap, setLegsMap] = useState<Record<string, LegInfo[]>>({});
   const [panelOpen, setPanelOpen] = useState(true);
   const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
@@ -303,6 +307,11 @@ export default function App() {
     if (readyRef.current) controllerRef.current?.setGlobe(globeOn);
   }, [globeOn]);
 
+  // 装饰小飞机总开关（默认关）。控制器是异步 chunk，mapReady 后才接得上
+  useEffect(() => {
+    controllerRef.current?.setPlanesEnabled(planeOn);
+  }, [planeOn, mapReady]);
+
   // 深色模式：html.dark 类切换整套 CSS 变量（useLayoutEffect 避免首帧闪浅色）
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -332,9 +341,10 @@ export default function App() {
     if (units !== 'km') q.set('u', units);
     if (!labelsOn) q.set('labels', '0');
     if (!dark) q.set('theme', 'light');
+    if (planeOn) q.set('plane', '1');
     const qs = q.toString();
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
-  }, [routes, lang, base, units, labelsOn, globeOn, dark, urlBooted]);
+  }, [routes, lang, base, units, labelsOn, globeOn, dark, planeOn, urlBooted]);
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
@@ -622,6 +632,8 @@ export default function App() {
         onLabels={setLabelsOn}
         dark={dark}
         onDark={setDark}
+        planeOn={planeOn}
+        onPlane={setPlaneOn}
         keyEditable={KEY_EDITABLE}
         hasSatKey={satKeySet}
         onSatKey={applySatKey}
