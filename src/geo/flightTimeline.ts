@@ -86,6 +86,29 @@ export function nowInZone(tz: string): string {
   return lt ? `${lt.ymd}T${lt.time}` : '';
 }
 
+/** 自定义日期弹层的月网格（始终 6×7=42 格）：weekStart 0=周日 / 1=周一。
+ *  ymd 用 UTC 构造与取值，保证格子与选中值（同出 ymd 口径）严格可比 */
+export interface CalendarCell {
+  ymd: string;
+  day: number;
+  inMonth: boolean;
+}
+
+export function calendarCells(year: number, month: number, weekStart: 0 | 1): CalendarCell[] {
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const lead = (first.getUTCDay() - weekStart + 7) % 7;
+  const cells: CalendarCell[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(Date.UTC(year, month - 1, 1 - lead + i));
+    cells.push({
+      ymd: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`,
+      day: d.getUTCDate(),
+      inMonth: d.getUTCMonth() === month - 1,
+    });
+  }
+  return cells;
+}
+
 interface ZoneParts {
   y: number;
   mo: number;

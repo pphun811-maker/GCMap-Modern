@@ -9,7 +9,8 @@ import {
 import {
   computeTimeline, dayDelta, initTzLookup, localTime, nowInZone, tzAt, tzLookupReady, zonedToUtc,
 } from '../geo/flightTimeline';
-import type { Strings } from '../i18n/strings';
+import { DepartPicker } from './DepartPicker';
+import type { Lang, Strings } from '../i18n/strings';
 
 const UNIT_LABEL: Record<Units, string> = { km: 'km', mi: 'mi', nm: 'nm' };
 
@@ -32,13 +33,15 @@ interface Props {
   route: RouteEntry | null;
   units: Units;
   onUnits: (u: Units) => void;
+  lang: Lang;
   t: Strings;
 }
 
-export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
+export function RouteSummary({ legs, route, units, onUnits, lang, t }: Props) {
   // ---- 时区到达时间线（路线③）：tz 查询懒加载 + 出发时刻（出发地当地墙钟，语义见 zonedToUtc） ----
   const [tzReady, setTzReady] = useState(tzLookupReady());
   const [departInput, setDepartInput] = useState<string | null>(null);
+  const [nowLocked, setNowLocked] = useState(false);
   useEffect(() => {
     if (tzReady) return;
     void initTzLookup()
@@ -47,11 +50,18 @@ export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
         /* tz chunk 加载失败：时间线整体隐藏，不影响其它功能 */
       });
   }, [tzReady]);
+  // "现在"只冻结一次：显示值不再随无关重渲染漂移，需要刷新走"现在"按钮
+  const originTz0 = tzReady && route && route.airports.length >= 2 ? tzAt(route.airports[0].lat, route.airports[0].lon) : null;
+  useEffect(() => {
+    if (nowLocked || !originTz0) return;
+    setDepartInput(nowInZone(originTz0));
+    setNowLocked(true);
+  }, [nowLocked, originTz0]);
 
   const stopsAirports = route?.airports ?? [];
-  const originTz = tzReady && stopsAirports.length >= 2 ? tzAt(stopsAirports[0].lat, stopsAirports[0].lon) : null;
-  // 未手动输入时跟随"现在"（出发地当地墙钟）；手动输入后固定，直到点"现在"复位
-  const departValue = departInput ?? (originTz ? nowInZone(originTz) : '');
+  const originTz = stopsAirports.length >= 2 ? tzAt(stopsAirports[0].lat, stopsAirports[0].lon) : null;
+  const departValue = departInput ?? '';
+  const todayYmd = originTz ? localTime(new Date(), originTz)?.ymd ?? '' : '';
   const departAt = useMemo(
     () => (departValue && originTz ? zonedToUtc(departValue, originTz) : null),
     [departValue, originTz],
@@ -173,14 +183,8 @@ export function RouteSummary({ legs, route, units, onUnits, t }: Props) {
       {timeline && (
         <div className="time-line">
           <div className="tl-head">
-            <label className="tl-label" htmlFor="depart-at">{t.departAt}</label>
-            <input
-              id="depart-at"
-              type="datetime-local"
-              className="tl-input"
-              value={departValue}
-              onChange={(e) => setDepartInput(e.target.value)}
-            />
+            <span className="tl-label">{t.departAt}</span>
+            <DepartPicker value={departValue} onChange={setDepartInput} todayYmd={todayYmd} lang={lang} t={t} />
             <button
               type="button"
               className="tl-now"

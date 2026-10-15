@@ -598,6 +598,7 @@ export default function App() {
               route={selected}
               units={units}
               onUnits={setUnits}
+              lang={lang}
               t={t}
             />
           </div>

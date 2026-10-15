@@ -1089,6 +1089,138 @@ html.dark .tl-input {
   color-scheme: dark;
 }
 
+/* ---------- 自定义出发时刻选择弹层（DepartPicker）：原生日历弹窗是封闭 Shadow DOM 不可主题化 ---------- */
+.dp-root {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.dp-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.dp-trigger:hover {
+  border-color: var(--focus-ring);
+}
+
+.dp-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.dp-pop {
+  position: fixed;
+  z-index: 2500;
+  width: 296px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dp-month {
+  flex: 1;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.dp-nav {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dp-nav:hover {
+  background: var(--fill);
+}
+
+.dp-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.dp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dp-day {
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11.5px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.dp-day:hover {
+  background: var(--fill);
+}
+
+.dp-day.out {
+  color: var(--text-faint);
+  opacity: 0.55;
+}
+
+.dp-day.today {
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+
+.dp-day.selected {
+  background: var(--link);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.dp-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 8px;
+}
+
+.dp-select {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.dp-colon {
+  color: var(--text-faint);
+}
+
 /* ---------- 分段按钮（右上菜单内嵌 / 摘要单位切换共用；磨砂材质与 .card 一致） ---------- */
 .seg {
   display: flex;
