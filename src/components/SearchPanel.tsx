@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { findByCode, searchAirports, type Airport } from '../data/search';
+import { onAirportsReady, findByCode, searchAirports, type Airport } from '../data/search';
 import type { Strings } from '../i18n/strings';
 
 const SEG_SPLIT = /[-—>→,，;；]+/;
@@ -53,9 +53,12 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
     [text],
   );
   const lastSegment = segments[segments.length - 1] ?? '';
+  // 机场数据是异步 chunk：就绪后触发一次重渲染，重算加载窗口内已输入的建议
+  const [dataTick, bumpDataTick] = useState(0);
+  useEffect(() => onAirportsReady(() => bumpDataTick((n) => n + 1)), []);
   const suggestions = useMemo(
     () => (!rawMode && lastSegment.length >= 2 && open ? searchAirports(lastSegment, 7) : []),
-    [rawMode, lastSegment, open],
+    [rawMode, lastSegment, open, dataTick],
   );
 
   useEffect(() => {

@@ -1,0 +1,52 @@
+// 首屏性能预算（2026-10-16，对应审查 FND-017）：dist 产物超出预算即退出 1。
+// 跑法： npm run size（CI 在 Pages 部署前执行，防止拆分成果被悄悄吃回去）。
+// 预算口径：JS/CSS 按 gzip 传输体积计；图片本身已压缩，按原始体积计。
+// 调整预算时同步更新 HANDOFF PHASE 2 台账的性能预算一节。
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
+
+const assets = join(process.cwd(), 'dist', 'assets');
+
+// [文件名正则, 预算 KB, 口径, 说明]（构建产物带 8 位 hash 后缀）
+const RULES = [
+  { re: /^index-.*\.js$/, maxKb: 120, gz: true, label: '首屏 JS（react + 应用 + 搜索壳）' },
+  { re: /^index-.*\.css$/, maxKb: 10, gz: true, label: '首屏 CSS' },
+  { re: /^MapController-.*\.js$/, maxKb: 320, gz: true, label: 'maplibre 异步 chunk' },
+  { re: /^MapController-.*\.css$/, maxKb: 12, gz: true, label: 'maplibre 异步 CSS' },
+  { re: /^airports-.*\.js$/, maxKb: 380, gz: true, label: '机场数据异步 chunk' },
+  { re: /^global-lc-merc-[A-Za-z0-9_-]{8}\.webp$/, maxKb: 220, gz: false, label: '绿毯 SD（无损 webp）' },
+  { re: /^global-lc-merc-hd-[A-Za-z0-9_-]{8}\.webp$/, maxKb: 2300, gz: false, label: '绿毯 HD（无损 webp，缩放≥4 级才拉取）' },
+];
+
+const files = readdirSync(assets);
+const kb = (n) => `${(n / 1024).toFixed(1)}KB`;
+
+let failed = false;
+const seen = new Set();
+console.log('产物                        实际      预算   说明');
+for (const { re, maxKb, gz, label } of RULES) {
+  const hit = files.find((f) => re.test(f));
+  if (!hit) {
+    console.log(`缺文件                      —         ≤${maxKb}KB  ${label}`);
+    failed = true;
+    continue;
+  }
+  seen.add(hit);
+  const raw = readFileSync(join(assets, hit));
+  const size = gz ? gzipSync(raw).length : raw.length;
+  const over = size > maxKb * 1024;
+  if (over) failed = true;
+  console.log(
+    `${hit.padEnd(26)} ${kb(size).padStart(8)}   ≤${maxKb}KB  ${over ? '超预算 ✗' : 'ok'}  ${label}`,
+  );
+}
+
+for (const f of files) {
+  if (/\.(js|css)$/.test(f) && !seen.has(f)) {
+    console.log(`${f.padEnd(26)} 未纳入预算（新增 chunk？请更新 check-size.mjs 规则）`);
+  }
+}
+
+console.log(failed ? '\nsize budget: FAIL' : '\nsize budget: ok');
+process.exitCode = failed ? 1 : 0;

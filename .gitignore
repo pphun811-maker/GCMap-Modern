@@ -34,6 +34,8 @@ design-assets/demo/*
 design-assets/demo/tiles/*
 !design-assets/demo/tiles/global-lc-merc.png
 !design-assets/demo/tiles/global-lc-merc-hd.png
+!design-assets/demo/tiles/global-lc-merc.webp
+!design-assets/demo/tiles/global-lc-merc-hd.webp
 !design-assets/palettes/
 design-assets/palettes/*
 !design-assets/palettes/apple-maps-tokens.css

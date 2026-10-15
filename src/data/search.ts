@@ -1,5 +1,3 @@
-import airportsJson from './airports.json';
-
 export interface Airport {
   iata: string;
   icao: string;
@@ -12,7 +10,22 @@ export interface Airport {
   sched: number; // 1 有定期航班
 }
 
-export const AIRPORTS = airportsJson as Airport[];
+// 机场数据懒加载（2026-10-16 性能预算）：airports.json（8799 条 / 1.28MB）不再打进首屏 JS，
+// 拆为独立异步 chunk，模块加载即开始拉取（与 maplibre chunk 并行），首帧不再被它阻塞。
+// 数据就绪前所有查询返回空 —— App 等 airportsReady 再解析 URL 航线，SearchPanel 就绪后重算建议。
+
+let AIRPORTS: Airport[] = [];
+
+interface IndexEntry {
+  a: Airport;
+  iata: string;
+  icao: string;
+  name: string;
+  city: string;
+  metros: string[];
+  nameWords: string[];
+}
+let INDEX: IndexEntry[] = [];
 
 const norm = (s: string) =>
   s
@@ -55,16 +68,50 @@ for (const [key, codes] of Object.entries(METRO_ALIASES)) {
   }
 }
 
-// 预建索引，避免每次输入都全量归一化
-const INDEX = AIRPORTS.map((a) => ({
-  a,
-  iata: a.iata.toLowerCase(),
-  icao: a.icao.toLowerCase(),
-  name: norm(a.name),
-  city: norm(a.city),
-  metros: METRO_BY_CODE.get(a.iata.toLowerCase()) ?? [],
-  nameWords: norm(a.name).split(' ').filter(Boolean),
-}));
+// 预建索引，避免每次输入都全量归一化（数据加载完成后重建一次）
+function rebuildIndex(): void {
+  INDEX = AIRPORTS.map((a) => {
+    const nName = norm(a.name);
+    return {
+      a,
+      iata: a.iata.toLowerCase(),
+      icao: a.icao.toLowerCase(),
+      name: nName,
+      city: norm(a.city),
+      metros: METRO_BY_CODE.get(a.iata.toLowerCase()) ?? [],
+      nameWords: nName.split(' ').filter(Boolean),
+    };
+  });
+}
+
+const readyListeners = new Set<() => void>();
+let loadPromise: Promise<void> | null = null;
+
+/** 拉取机场数据并建索引；幂等，失败后可重试 */
+export function loadAirports(): Promise<void> {
+  loadPromise ??= import('./airports.json')
+    .then((m) => {
+      AIRPORTS = m.default as Airport[];
+      rebuildIndex();
+      const cbs = [...readyListeners];
+      readyListeners.clear();
+      for (const cb of cbs) cb();
+    })
+    .catch((e) => {
+      loadPromise = null; // 允许下次重试
+      throw e;
+    });
+  return loadPromise;
+}
+
+/** 模块加载即开始拉数据：首屏必用（URL 航线解析 + 搜索），越早并行越好 */
+export const airportsReady = loadAirports();
+
+/** 数据就绪回调（已就绪则同步调用）；供 UI 在数据到达后重算派生结果 */
+export function onAirportsReady(cb: () => void): void {
+  if (INDEX.length) cb();
+  else readyListeners.add(cb);
+}
 
 /** 代码精确匹配（IATA 优先） */
 export function findByCode(code: string): Airport | undefined {

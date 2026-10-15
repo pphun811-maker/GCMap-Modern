@@ -1,6 +1,10 @@
 // 地图引擎封装：底图切换 / 3D 地球投影 / 标注语言与显隐 / 多航线渲染 / 机场 Pin / 视野适配
 // v2 预留：3D 地形只需在此增加 setTerrain(dem)，业务层（航线数据、UI）不感知引擎实现。
 
+// 本模块整体是异步 chunk（App 动态 import 本文件），maplibre CSS 跟着引擎走，
+// 不占首屏 CSS（2026-10-16 性能预算）
+import 'maplibre-gl/dist/maplibre-gl.css';
+
 import {
   Map as MLMap,
   Marker,

@@ -10,8 +10,11 @@
 
 import type { StyleSpecification } from 'maplibre-gl';
 import appleLandcoverRaw from '../../design-assets/styles/apple-landcover.json?raw';
-import globalLcUrl from '../../design-assets/demo/tiles/global-lc-merc.png?url';
-import globalLcHdUrl from '../../design-assets/demo/tiles/global-lc-merc-hd.png?url';
+// 绿毯用无损 WebP（ffmpeg libwebp q100 由同名 PNG 逐像素转出，PSNR=inf 观感零差异），
+// 体积比 PNG 小 30%：SD 275→194KB、HD 3.18→2.21MB。design-assets 流水线仍产出 PNG，
+// 应用侧接入时换用这里的 webp 副本。
+import globalLcUrl from '../../design-assets/demo/tiles/global-lc-merc.webp?url';
+import globalLcHdUrl from '../../design-assets/demo/tiles/global-lc-merc-hd.webp?url';
 
 export type LabelLanguage = 'latin' | 'zh';
 export type BaseMode = 'vector' | 'satellite';

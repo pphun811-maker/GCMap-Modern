@@ -35,6 +35,10 @@ jobs:
         # local dev keeps serving from the root.
         run: npx tsc -b && npx vite build --base=/${{ github.event.repository.name }}/
 
+      - name: Size budget
+        # 首屏性能预算（scripts/check-size.mjs）：超预算则部署失败
+        run: npm run size
+
       - uses: actions/configure-pages@v5
         with:
           enablement: true

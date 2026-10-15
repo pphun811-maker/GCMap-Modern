@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { MapController, type LegInfo, type RouteEntry } from './map/MapController';
+// MapController（连带 maplibre 引擎）是异步 chunk：此处只引用类型，运行时动态 import
+//（2026-10-16 性能预算：maplibre ~1MB 不再阻塞首帧）
+import type { MapController, LegInfo, RouteEntry } from './map/MapController';
 import type { BaseMode, LabelLanguage } from './map/styleFactory';
 import { KEY_EDITABLE, hasRuntimeStadiaKey } from './map/styleFactory';
-import { findByCode, findAirportNear, type Airport } from './data/search';
+import { airportsReady, findByCode, findAirportNear, type Airport } from './data/search';
 import { convertDistance, haversineKm, type Units } from './geo/greatCircle';
 import {
   decodePolyline, encodePolyline, dispatchTypeForKm, fetchLatestOfp, parseSbfMeta,
@@ -86,7 +88,6 @@ function parseSbrParam(q: URLSearchParams): { routes: RouteEntry[]; dropped: num
 }
 
 interface UrlState {
-  routes: RouteEntry[];
   lang: Lang;
   base: BaseMode;
   units: Units;
@@ -94,17 +95,11 @@ interface UrlState {
   globe: boolean;
   dark: boolean;
   sbf: string;
-  /** 深链里无法识别的部分（一次性提示用） */
-  dropped: { codes: string[]; snapshots: number };
 }
 
-function parseUrl(): UrlState {
-  const q = new URLSearchParams(window.location.search);
-  const sbr = parseSbrParam(q);
-  const rt = parseRoutesParam(q.get('route'));
+// 非航线字段首帧同步解析（不依赖机场数据，chunk 加载窗口内也即时生效）
+function parseUrl(q: URLSearchParams): UrlState {
   return {
-    // 快照航线在前、代码航线在后：初始选中（最后一条）落在用户最近在操作的代码航线上
-    routes: [...sbr.routes, ...rt.routes],
     lang: q.get('lang') === 'en' ? 'en' : 'zh',
     base: q.get('base') === 'satellite' ? 'satellite' : 'vector',
     units: q.get('u') === 'mi' || q.get('u') === 'nm' ? (q.get('u') as Units) : 'km',
@@ -112,8 +107,15 @@ function parseUrl(): UrlState {
     globe: q.get('globe') === '1',
     dark: q.get('theme') !== 'light',
     sbf: q.get('sbf') ?? '',
-    dropped: { codes: rt.dropped, snapshots: sbr.dropped },
   };
+}
+
+// 航线参数依赖机场数据（已拆为异步 chunk），数据就绪后调用；
+// 快照航线在前、代码航线在后：初始选中（最后一条）落在用户最近在操作的代码航线上
+function parseUrlRoutes(q: URLSearchParams): { routes: RouteEntry[]; dropped: { codes: string[]; snapshots: number } } {
+  const sbr = parseSbrParam(q);
+  const rt = parseRoutesParam(q.get('route'));
+  return { routes: [...sbr.routes, ...rt.routes], dropped: { codes: rt.dropped, snapshots: sbr.dropped } };
 }
 
 /** SimBrief 导入的 UI 状态：空闲 / 输用户名 / 等待生成（轮询中）/ 结果提示 */
@@ -124,14 +126,17 @@ type SbfUi =
   | { kind: 'msg'; text: string; error: boolean };
 
 export default function App() {
-  const initial = useRef(parseUrl()).current;
+  // 首帧抓取查询串：机场数据 chunk 就绪前 URL 同步挂起，之后不能回头读被 replaceState 改写过的 location
+  const bootQuery = useRef(new URLSearchParams(window.location.search)).current;
+  const initial = useRef(parseUrl(bootQuery)).current;
   const [lang, setLang] = useState<Lang>(initial.lang);
   const [base, setBase] = useState<BaseMode>(initial.base);
   const [units, setUnits] = useState<Units>(initial.units);
-  const [routes, setRoutes] = useState<RouteEntry[]>(initial.routes);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    initial.routes.length ? initial.routes[initial.routes.length - 1].id : null,
-  );
+  // 航线来自 URL 解析，等机场数据 chunk 就绪后由 boot effect 填充
+  const [routes, setRoutes] = useState<RouteEntry[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // URL 航线参数是否已解析完：完成前 URL 同步挂起，避免首帧 replaceState 把未解析的 route/sbr 抹掉
+  const [urlBooted, setUrlBooted] = useState(false);
   const [labelsOn, setLabelsOn] = useState(initial.labels);
   const [globeOn, setGlobeOn] = useState(initial.globe);
   const [dark, setDark] = useState(initial.dark);
@@ -175,25 +180,67 @@ export default function App() {
   fmtRef.current = (km, u) =>
     `${Math.round(convertDistance(km, u)).toLocaleString('en-US')} ${u}`;
 
-  // 地图初始化（仅一次）
+  // 地图初始化（仅一次）：maplibre chunk 与机场数据 chunk 并行拉取，
+  // 面板/骨架先渲染，引擎模块就绪后再建图
   useEffect(() => {
-    if (!mapDivRef.current) return;
-    const controller = new MapController(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe);
-    controllerRef.current = controller;
-    controller.onReady(() => {
-      readyRef.current = true;
-      setMapReady(true);
-      controller.setBase(baseRef.current);
-      controller.setLabelsVisible(labelsRef.current);
-      // globe 初始值已在构造/buildStyle 内置，只重放就绪前发生过的切换
-      if (globeRef.current !== initial.globe) controller.setGlobe(globeRef.current);
-      const latest = routesRef.current;
-      if (latest.length) {
-        setLegsMap(controller.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));
-        controller.fitRoutes(latest.filter((r) => r.visible));
-      }
-    });
-    return () => controller.map.remove();
+    let disposed = false;
+    let controller: MapController | null = null;
+    import('./map/MapController')
+      .then(({ MapController: MapControllerImpl }) => {
+        if (disposed || !mapDivRef.current) return;
+        controller = new MapControllerImpl(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe);
+        controllerRef.current = controller;
+        controller.onReady(() => {
+          readyRef.current = true;
+          setMapReady(true);
+          controller!.setBase(baseRef.current);
+          controller!.setLabelsVisible(labelsRef.current);
+          // globe 初始值已在构造/buildStyle 内置，只重放就绪前发生过的切换
+          if (globeRef.current !== initial.globe) controller!.setGlobe(globeRef.current);
+          const latest = routesRef.current;
+          if (latest.length) {
+            setLegsMap(controller!.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));
+            controller!.fitRoutes(latest.filter((r) => r.visible));
+          }
+        });
+      })
+      .catch((e) => {
+        // chunk 加载失败：地图区保持背景色，30s 兜底提示（mapFailed）给出刷新入口
+        console.error('[boot] maplibre chunk failed', e);
+      });
+    return () => {
+      disposed = true;
+      controller?.map.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 机场数据 chunk 就绪后：解析 URL 航线参数（快照/代码），无法识别的部分一次性提示（错误样式，可关闭）。
+  // 数据加载失败不拦界面：地图与面板仍可用，航线/搜索待下次刷新恢复
+  useEffect(() => {
+    let cancelled = false;
+    airportsReady
+      .then(() => {
+        if (cancelled) return;
+        const { routes: parsed, dropped } = parseUrlRoutes(bootQuery);
+        if (parsed.length) {
+          setRoutes(parsed);
+          setSelectedId(parsed[parsed.length - 1].id);
+        }
+        if (dropped.codes.length || dropped.snapshots) {
+          const parts: string[] = [];
+          if (dropped.codes.length) parts.push(t.urlDroppedCodes(dropped.codes));
+          if (dropped.snapshots) parts.push(t.urlDroppedSnapshots(dropped.snapshots));
+          showSbfMsg(parts.join(' '), true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setUrlBooted(true);
+      });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -261,8 +308,10 @@ export default function App() {
     document.documentElement.classList.toggle('dark', dark);
   }, [dark]);
 
-  // URL 同步（replaceState，不产生历史记录）
+  // URL 同步（replaceState，不产生历史记录）。urlBooted 前挂起：
+  // 机场数据 chunk 未就绪时 route/sbr 还没解析，先写会把参数从 URL 里抹掉
   useEffect(() => {
+    if (!urlBooted) return;
     const q = new URLSearchParams();
     // 普通航线进 route 参数；真实航路（含航点）无法用机场代码表达，逐条存 polyline 快照 sbr=
     const wpRoutes = routes.filter((r) => r.waypoints && r.waypoints.length >= 2);
@@ -285,7 +334,7 @@ export default function App() {
     if (!dark) q.set('theme', 'light');
     const qs = q.toString();
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
-  }, [routes, lang, base, units, labelsOn, globeOn, dark]);
+  }, [routes, lang, base, units, labelsOn, globeOn, dark, urlBooted]);
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
@@ -469,24 +518,16 @@ export default function App() {
     };
   }, [sbfUi]);
 
-  // 深链里无法识别的部分：一次性提示（错误样式），可关闭。不静默丢
-  useEffect(() => {
-    const { codes, snapshots } = initial.dropped;
-    if (!codes.length && !snapshots) return;
-    const parts: string[] = [];
-    if (codes.length) parts.push(t.urlDroppedCodes(codes));
-    if (snapshots) parts.push(t.urlDroppedSnapshots(snapshots));
-    showSbfMsg(parts.join(' '), true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 深链里无法识别的部分：已并入机场数据就绪后的 boot effect（parseUrlRoutes 的 dropped）
 
-  // 直达链接 ?sbf=<用户名>：地图就绪后拉取最新 OFP 作为一条新航线
+  // 直达链接 ?sbf=<用户名>：地图与机场数据都就绪后拉取最新 OFP 作为一条新航线
   useEffect(() => {
     if (!mapReady || !initial.sbf) return;
     let cancelled = false;
-    fetchLatestOfp(initial.sbf)
+    airportsReady
+      .then(() => (cancelled ? null : fetchLatestOfp(initial.sbf)))
       .then((r) => {
-        if (cancelled) return;
+        if (cancelled || !r) return;
         const oa = findByCode(r.originIcao) ?? findByCode(r.originIata);
         const da = findByCode(r.destIcao) ?? findByCode(r.destIata);
         if (!oa || !da) return;
