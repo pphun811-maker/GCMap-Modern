@@ -104,7 +104,10 @@ html.dark {
   height: 100%;
 }
 
-.map-root {
+/* ⚠ 两级选择器是必须的：maplibre-gl.css 跟着 MapController 异步 chunk 加载，
+   在 app.css 之后生效，其 .maplibregl-map{position:relative} 会翻掉单类选择器的
+   position:absolute（2026-10-16 白屏事故：容器塌成 0 高，地图只剩 300px 默认条） */
+.app-root .map-root {
   position: absolute;
   inset: 0;
   /* 3D 地球太空底色：星空由 spaceScene 的 canvas 画（globe 模式挂载），这里只留
@@ -1357,19 +1360,19 @@ html.dark {
   height: 100%;
 }
 
-/* MapLibre 控件贴合玻璃风格 */
-.maplibregl-ctrl-attrib,
-.maplibregl-ctrl-attrib.maplibregl-compact {
+/* MapLibre 控件贴合玻璃风格（.map-root 前缀抬高优先级：本文件与 maplibre css 的
+   加载顺序随异步 chunk 化不再可控，不能靠源顺序赢，见 .app-root .map-root 处注释） */
+.map-root .maplibregl-ctrl-attrib,
+.map-root .maplibregl-ctrl-attrib.maplibregl-compact {
   background: var(--attrib-bg) !important;
   backdrop-filter: blur(6px);
   /* compact 署名带 10px 外边距不贴角，折叠/展开都保持圆角（压掉 maplibre 的同时别用贴角圆角） */
   border-radius: 12px;
   font-size: 10.5px !important;
-  /* 提到两级选择器压过 maplibre 自带的 .maplibregl-ctrl-attrib.maplibregl-compact { color:#000 } */
   color: var(--attrib-text);
 }
 
-.maplibregl-ctrl-attrib a {
+.map-root .maplibregl-ctrl-attrib a {
   color: var(--link);
 }
 
@@ -1396,7 +1399,7 @@ html.dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
   filter: invert(1);
 }
 
-.maplibregl-ctrl-group {
+.map-root .maplibregl-ctrl-group {
   border-radius: 12px !important;
   overflow: hidden;
   box-shadow: var(--panel-shadow) !important;

@@ -111,6 +111,14 @@ export class MapController {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议；
     // getter 是动态的：用户运行时填入/更换 key 后无需重注册
     ensureProtocol(() => activeStadiaKey());
+    if (import.meta.env.DEV && container.clientHeight < 200) {
+      // 布局塌陷守卫：.map-root 若被 maplibre 自带 CSS 翻盘（.maplibregl-map{position:relative}）
+      // 会塌成 0 高，地图只剩 300px 默认条、页面"白屏"——DOM 探针全绿，只有像素能发现
+      console.error(
+        `[MapController] 地图容器高度塌陷 clientHeight=${container.clientHeight}px：` +
+        '检查 .app-root .map-root 定位规则是否仍压过 .maplibregl-map',
+      );
+    }
     this.map = new MLMap({
       container,
       style: buildStyle(lang, base, globe),
