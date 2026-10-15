@@ -26,6 +26,11 @@ import {
   greatCirclePoints, greatCircleMidpoint, haversineKm, initialBearing,
   destinationPoint, unwrapSequence, type Units,
 } from '../geo/greatCircle';
+import { estimateLegMinutes } from '../geo/flightTime';
+import {
+  buildPlanePath, easeInOutCubic, growDurationMs, planeAt, planeLoopSec,
+  revealLineFeatures, GROW_STAGGER_MS, LABEL_FADE_MS, type PlanePath,
+} from '../geo/routeAnim';
 
 export interface LegInfo {
   from: Airport;
@@ -62,9 +67,31 @@ const ROUTE_LABEL_HALO = '#FFFFFF';
 // 视野适配统一留白（左侧给面板留位）
 const FIT_PAD = { top: 110, bottom: 130, left: 460, right: 150 };
 
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** 装饰小飞机（机头朝上=正北 0°，marker rotation 以此为基准随地图对齐）；
+ *  配色走 --plane-color 随航线色，白描边保证卫星底图上可读 */
+const PLANE_SVG = `
+<svg viewBox="0 0 24 24" aria-hidden>
+  <path d="M12 1.6 13.2 8.6 21.6 13.4 21.6 15.3 13.3 12.8 12.9 18.1 15.7 20.3 15.7 21.9 12 20.7 8.3 21.9 8.3 20.3 11.1 18.1 10.7 12.8 2.4 15.3 2.4 13.4 10.8 8.6 Z"
+    fill="var(--plane-color, #0c79fe)" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round" paint-order="stroke"/>
+</svg>`;
+
 interface RouteRecord {
   markers: Marker[];
   codesSig: string;
+  /** 几何签名（机场序列 + 航点数）：变化 = 线数据重建 + 生长动画重放 + 小飞机换轨 */
+  geoSig: string;
+  /** 生长动画进行中（期间小飞机不起飞，重同步会先收场） */
+  growing: boolean;
+  plane: { marker: Marker; el: HTMLElement } | null;
+  planePath: PlanePath | null;
+  /** 巡航循环时长（秒，∝ 估算飞行时间）与进度 t∈[0,1)、帧间缓存的当前段索引 */
+  planeLoopSec: number;
+  planeT: number;
+  planeSeg: number;
 }
 
 export class MapController {
@@ -72,6 +99,13 @@ export class MapController {
   private routes = new Map<string, RouteRecord>();
   private routeLabelLayers = new Set<string>();
   private space: SpaceScene | null = null;
+  // 观感动画共用一个 rAF ticker（生长/标签淡入/小飞机巡航），无动画时自停省电；
+  // id 形如 `grow:<routeId>` / `labelfade:<routeId>` / `plane:<routeId>`
+  private anims = new Map<string, { tick: (now: number, dtMs: number) => boolean; cleanup: () => void }>();
+  private tickerRaf: number | null = null;
+  private lastTickNow = 0;
+  // 本次 syncRoutes 内已启动的生长动画数（多条航线错峰）
+  private growCount = 0;
 
   constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false) {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议；
@@ -231,8 +265,43 @@ export class MapController {
       if (!kept.has(id)) this.disposeRoute(id);
     }
     const legsMap: Record<string, LegInfo[]> = {};
+    this.growCount = 0;
     for (const e of entries) legsMap[e.id] = this.renderRoute(e, units, fmt);
     return legsMap;
+  }
+
+  /** 注册/替换一个动画并确保 ticker 在跑；同 id 旧动画先 cleanup */
+  private animate(id: string, tick: (now: number, dtMs: number) => boolean, cleanup: () => void = () => {}): void {
+    const prev = this.anims.get(id);
+    if (prev) {
+      this.anims.delete(id);
+      try { prev.cleanup(); } catch { /* 清理失败不拖垮 ticker */ }
+    }
+    this.anims.set(id, { tick, cleanup });
+    if (this.tickerRaf != null) return;
+    this.lastTickNow = performance.now();
+    const loop = (now: number) => {
+      this.tickerRaf = null;
+      const dtMs = Math.min(64, now - this.lastTickNow); // 掉帧/休眠回来时钳 dt，防止小飞机瞬移
+      this.lastTickNow = now;
+      for (const [key, a] of [...this.anims]) {
+        let alive = false;
+        try { alive = a.tick(now, dtMs); } catch { alive = false; }
+        if (!alive) {
+          this.anims.delete(key);
+          try { a.cleanup(); } catch { /* 同上 */ }
+        }
+      }
+      if (this.anims.size) this.tickerRaf = requestAnimationFrame(loop);
+    };
+    this.tickerRaf = requestAnimationFrame(loop);
+  }
+
+  private cancelAnim(id: string): void {
+    const a = this.anims.get(id);
+    if (!a) return;
+    this.anims.delete(id);
+    try { a.cleanup(); } catch { /* 同上 */ }
   }
 
   /** 默认粗细曲线沿既有验收值 z2=2 / z6=3.2 / z10=4.5，width 为倍率 */
@@ -246,6 +315,10 @@ export class MapController {
     const lineLayer = `route-line-${e.id}`;
     const labelLayer = `route-labels-${e.id}`;
     let rec = this.routes.get(e.id);
+    // 几何变化（新增 / 编辑经停 / 导入真实航路）→ 重放生长动画；纯样式与单位调整不重放
+    const codesSig = e.airports.map((a) => a.iata || a.icao).join('-');
+    const geoSig = `${codesSig}:${e.waypoints?.length ?? 0}`;
+    const willGrow = (rec ? rec.geoSig !== geoSig : true) && e.visible && !prefersReducedMotion();
     if (!rec) {
       const beforeId = firstLabelLayerId(this.map.getStyle() as StyleSpecification);
       this.map.addSource(srcLine, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -279,19 +352,27 @@ export class MapController {
             // 描边细化过一轮：1.8 + 0.4 模糊在 11px 字上显得很厚（2026-10-08 用户要求打薄）
             'text-halo-width': 1.1,
             'text-halo-blur': 0.25,
+            // 生长动画期间标签先隐，完成后淡入（routeAnim.LABEL_FADE_MS）
+            'text-opacity': willGrow ? 0 : 1,
           },
         },
         beforeId,
       );
-      rec = { markers: [], codesSig: '' };
+      rec = { markers: [], codesSig: '', geoSig, growing: false, plane: null, planePath: null, planeLoopSec: 10, planeT: 0, planeSeg: 0 };
       this.routes.set(e.id, rec);
       this.routeLabelLayers.add(labelLayer);
     } else {
+      // 生长期内被重新同步（改色/改粗细/换单位/显隐）：旧生长与淡入立即收场，
+      // 避免旧动画的切片覆盖本次新数据；几何已变时小飞机一并作废待重生
+      this.cancelAnim(`grow:${e.id}`);
+      this.cancelAnim(`labelfade:${e.id}`);
+      if (willGrow) this.removePlane(rec);
       // 颜色 / 粗细可能变了：幂等覆盖，代价可忽略
       try {
         this.map.setPaintProperty(lineLayer, 'line-color', e.color);
         this.map.setPaintProperty(lineLayer, 'line-width', this.lineWidthExpr(e.width) as any);
         this.map.setPaintProperty(labelLayer, 'text-color', e.color);
+        this.map.setPaintProperty(labelLayer, 'text-opacity', 1);
       } catch {
         /* 图层可能尚未就绪，忽略 */
       }
@@ -330,14 +411,23 @@ export class MapController {
       }
     }
 
-    (this.map.getSource(srcLine) as GeoJSONSource).setData({
-      type: 'FeatureCollection',
-      features: lineFeatures,
-    });
+    // 巡航路径与循环时长：估算飞行时间（各段距离分档）映射到 5–24s 视觉循环
+    rec.planePath = buildPlanePath(lineFeatures.map((f) => f.geometry.coordinates as [number, number][]));
+    rec.planeLoopSec = planeLoopSec(legs.reduce((s, l) => s + estimateLegMinutes(l.km), 0));
+
     (this.map.getSource(srcLabel) as GeoJSONSource).setData({
       type: 'FeatureCollection',
       features: labelFeatures,
     });
+    if (willGrow) {
+      // 生长动画接管线数据（首帧切片覆盖，避免全量闪一帧）
+      this.startGrowth(e.id, rec, srcLine, labelLayer, lineFeatures, e.color);
+    } else {
+      (this.map.getSource(srcLine) as GeoJSONSource).setData({
+        type: 'FeatureCollection',
+        features: lineFeatures,
+      });
+    }
 
     // 机场 Pin（Apple 蓝点样式，颜色跟随航线色）：仅在机场序列变化时重建，颜色与显隐每次同步
     const sig = e.airports.map((a) => a.iata || a.icao).join('-');
@@ -364,6 +454,7 @@ export class MapController {
       rec.codesSig = sig;
     } else {
       for (const m of rec.markers) m.getElement().style.setProperty('--pin-color', e.color);
+      if (rec.plane) rec.plane.el.style.setProperty('--plane-color', e.color);
     }
 
     const vis = e.visible ? 'visible' : 'none';
@@ -374,8 +465,94 @@ export class MapController {
       /* 图层可能尚未就绪，忽略 */
     }
     for (const m of rec.markers) m.getElement().style.display = e.visible ? '' : 'none';
+    if (rec.plane) rec.plane.el.style.display = e.visible ? '' : 'none';
+    // 会话中途开启"减弱动态效果"：现役小飞机立即回收，也不再补飞
+    if (prefersReducedMotion() && rec.plane) this.removePlane(rec);
+    // 小飞机兜底起飞：非生长状态的可见航线保证有一架在飞
+    //（生长完成后由 startGrowth 起飞；取消生长 / 减动效恢复 / 显隐切换走这里）
+    if (!rec.growing && e.visible && !prefersReducedMotion() && rec.planePath && !rec.plane) {
+      this.spawnPlane(e.id, rec, e.color);
+    }
 
     return legs;
+  }
+
+  /** 航线生长动画：逐帧切片线数据（多段逐段连续生长），完成后淡入标签并放飞小飞机 */
+  private startGrowth(routeId: string, rec: RouteRecord, srcLine: string, labelLayer: string, lineFeatures: any[], color: string): void {
+    rec.growing = true;
+    const src = this.map.getSource(srcLine) as GeoJSONSource;
+    const setFeatures = (features: any[]) => src.setData({ type: 'FeatureCollection', features });
+    const totalPts = lineFeatures.reduce((s, f) => s + f.geometry.coordinates.length, 0);
+    // 首帧先只露起点切片，避免刚设的全量数据闪一帧
+    setFeatures(revealLineFeatures(lineFeatures, 1));
+    const duration = growDurationMs(lineFeatures.length);
+    const start = performance.now() + this.growCount++ * GROW_STAGGER_MS;
+    this.animate(`grow:${routeId}`, (now) => {
+      if (now < start) return true; // 多条航线同时新增时的错峰等待
+      const t = Math.min(1, (now - start) / duration);
+      setFeatures(revealLineFeatures(lineFeatures, 1 + Math.round(easeInOutCubic(t) * (totalPts - 1))));
+      if (t < 1) return true;
+      rec.growing = false;
+      this.fadeLabelsIn(routeId, labelLayer);
+      this.spawnPlane(routeId, rec, color);
+      return false;
+    });
+  }
+
+  /** 标签淡入（生长完成后调用）；cleanup 兜底确保最终可见 */
+  private fadeLabelsIn(routeId: string, labelLayer: string): void {
+    const start = performance.now();
+    this.animate(
+      `labelfade:${routeId}`,
+      (now) => {
+        const k = Math.min(1, (now - start) / LABEL_FADE_MS);
+        try { this.map.setPaintProperty(labelLayer, 'text-opacity', k); } catch { return false; }
+        return k < 1;
+      },
+      () => {
+        try { this.map.setPaintProperty(labelLayer, 'text-opacity', 1); } catch { /* 图层已移除 */ }
+      },
+    );
+  }
+
+  /** 装饰小飞机起飞：沿 planePath 循环巡航，循环时长 ∝ 估算飞行时间。纯观感，与真实航迹无关 */
+  private spawnPlane(routeId: string, rec: RouteRecord, color: string): void {
+    const path = rec.planePath;
+    if (!path || path.coords.length < 2 || path.totalKm <= 0) return;
+    this.removePlane(rec);
+    const el = document.createElement('div');
+    el.className = 'route-plane';
+    el.style.setProperty('--plane-color', color);
+    el.innerHTML = PLANE_SVG;
+    const marker = new Marker({
+      element: el,
+      anchor: 'center',
+      rotationAlignment: 'map',
+      pitchAlignment: 'map',
+      // globe 模式球体背面整体隐藏，与 Pin 同款防幽灵
+      opacityWhenCovered: 0,
+    });
+    const p0 = planeAt(path, 0);
+    marker.setLngLat(p0.lngLat).setRotation(p0.bearing).addTo(this.map);
+    rec.plane = { marker, el };
+    rec.planeT = 0;
+    rec.planeSeg = 0;
+    this.animate(`plane:${routeId}`, (_now, dtMs) => {
+      if (!rec.plane) return false; // marker 已被外部移除，巡航动画自行退场
+      rec.planeT += dtMs / (rec.planeLoopSec * 1000);
+      if (rec.planeT >= 1) { rec.planeT %= 1; rec.planeSeg = 0; } // 飞完一轮从头再来
+      const p = planeAt(path, rec.planeT, rec.planeSeg);
+      rec.planeSeg = p.seg;
+      rec.plane.marker.setLngLat(p.lngLat);
+      rec.plane.marker.setRotation(p.bearing);
+      return true;
+    });
+  }
+
+  private removePlane(rec: RouteRecord): void {
+    if (!rec.plane) return;
+    try { rec.plane.marker.remove(); } catch { /* 已移除 */ }
+    rec.plane = null; // 巡航动画 tick 的空守卫会自行退场
   }
 
   /** 真实航路折线：整条一条 LineString，标签放在沿线 50% 处按局部航向右侧挪离（同大圆分支的 6% 规则） */
@@ -422,9 +599,13 @@ export class MapController {
   }
 
   private disposeRoute(id: string): void {
+    this.cancelAnim(`grow:${id}`);
+    this.cancelAnim(`labelfade:${id}`);
+    this.cancelAnim(`plane:${id}`);
     const rec = this.routes.get(id);
     if (!rec) return;
     for (const m of rec.markers) m.remove();
+    this.removePlane(rec);
     try { this.map.removeLayer(`route-line-${id}`); } catch { /* 可能尚未添加 */ }
     try { this.map.removeLayer(`route-labels-${id}`); } catch { /* 同上 */ }
     try { this.map.removeSource(`route-lines-${id}`); } catch { /* 同上 */ }
