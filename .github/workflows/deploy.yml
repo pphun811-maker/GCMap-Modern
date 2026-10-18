@@ -29,6 +29,10 @@ jobs:
 
       - run: npm ci
 
+      - name: Regression tests
+        # 六套纯逻辑回归（样式标注/SimBrief 解析/搜索/动画/时区时间线/本地持久化），失败即不部署
+        run: npm test
+
       - name: Build
         # Project pages are served from https://<owner>.github.io/<repo>/, so the
         # build must prefix asset URLs with the repo name. Build-time flag only:

@@ -25,6 +25,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "test": "node scripts/test-style-labels.mjs && node scripts/run-sbf-parse-test.mjs && node scripts/run-search-test.mjs && node scripts/run-route-anim-test.mjs && node scripts/run-flight-timeline-test.mjs && node scripts/run-local-features-test.mjs",
     "build:airports": "node scripts/build-airports.mjs",
     "size": "node scripts/check-size.mjs"
   },
