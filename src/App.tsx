@@ -238,11 +238,12 @@ export default function App() {
           controller!.setLabelsVisible(labelsRef.current);
           // globe 初始值已在构造/buildStyle 内置，只重放就绪前发生过的切换
           if (globeRef.current !== initial.globe) controller!.setGlobe(globeRef.current);
-          // 语言初始值在构造参数内置、地形默认关，同样只重放就绪前发生过的切换
+          // 语言初始值在构造参数内置，只重放就绪前发生过的切换；
+          // 地形无条件重放（幂等）：?terrain=1 直开时靠它上地形，同时把晕染联动置好
           if (langRef.current !== initial.lang) {
             controller!.setLabelsLanguage(langRef.current === 'zh' ? 'zh' : 'latin');
           }
-          if (terrainRef.current !== initial.terrain) controller!.setTerrain(terrainRef.current);
+          controller!.setTerrain(terrainRef.current);
           const latest = routesRef.current;
           if (latest.length) {
             setLegsMap(controller!.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));

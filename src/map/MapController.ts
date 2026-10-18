@@ -103,6 +103,8 @@ export class MapController {
   private routeLabelLayers = new Set<string>();
   // 机场 Pin 点击回调（App 渲染信息卡；null = 未注册）
   private pinClickCb: ((a: Airport, x: number, y: number) => void) | null = null;
+  // 3D 地形当前是否开启（山体晕染层随它联动：官方不建议 hillshade+terrain 同开，双倍开销）
+  private terrainActive = false;
   private space: SpaceScene | null = null;
   // 观感动画共用一个 rAF ticker（生长/标签淡入/小飞机巡航），无动画时自停省电；
   // id 形如 `grow:<routeId>` / `labelfade:<routeId>` / `plane:<routeId>`
@@ -190,6 +192,8 @@ export class MapController {
         /* 同上 */
       }
     }
+    // 组翻转会把晕染层一起设回可见：地形开着时恢复隐藏（applyHillshadeVisibility 幂等）
+    this.applyHillshadeVisibility();
   }
 
   /** 用户在菜单填入自己的 Stadia key（UI 侧已通过抓瓦片预验证）：写 localStorage + 热更新
@@ -242,13 +246,26 @@ export class MapController {
   }
 
   /** 3D 地形起伏：复用成品样式里的 terrain-dem 源（AWS terrarium，与山体晕染同源）。
-   *  exaggeration 1.2 与整体观感匹配；关闭传 null 恢复平面。样式未就绪时调用会抛错，
-   *  由调用方保证时序（App 在 onReady 重放 / ready 后的 effect 里调用）。 */
+   *  exaggeration 1.2 与整体观感匹配；关闭传 null 恢复平面。
+   *  地形开启期间自动隐藏 terrain-hillshade 层——立体感由网格本身提供，
+   *  晕染叠网格是双倍开销（矢量 126 层全部要投影到地形上，帧预算很紧）。
+   *  样式未就绪时调用会抛错，由调用方保证时序（App 在 onReady 重放 / ready 后的 effect 里调用）。 */
   setTerrain(on: boolean): void {
     try {
       this.map.setTerrain(on ? { source: 'terrain-dem', exaggeration: 1.2 } : null);
+      this.terrainActive = on;
+      this.applyHillshadeVisibility();
     } catch (e) {
       console.warn('[MapController] setTerrain failed', e);
+    }
+  }
+
+  /** 山体晕染显隐联动：地形开=隐藏，地形关=恢复成品样式原状 */
+  private applyHillshadeVisibility(): void {
+    try {
+      this.map.setLayoutProperty('terrain-hillshade', 'visibility', this.terrainActive ? 'none' : 'visible');
+    } catch {
+      /* 图层可能尚未就绪，忽略 */
     }
   }
 

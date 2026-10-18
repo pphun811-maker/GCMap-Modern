@@ -179,6 +179,12 @@ export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vect
   // 成品样式靠 demo 页 AttributionControl 署名，应用侧署名挂在 source 上
   style.sources.openmaptiles.attribution = '© OpenStreetMap contributors · OpenFreeMap';
 
+  // 3D 地形成本控制（2026-10-18 用户实测矢量+地形卡顿）：深级 DEM 瓦片网格密度大、
+  // 拖拽/缩放帧开销高，航线图的常用视野（z≤9 的山脉走廊）用不到 z12 以上的地形细节。
+  // 封顶 12：城市级缩放也能保持流畅，山区观感几乎无损。
+  const dem = style.sources['terrain-dem'] as { maxzoom?: number } | undefined;
+  if (dem && (dem.maxzoom ?? 15) > 12) dem.maxzoom = 12;
+
   const name = nameExpr(lang);
   for (const layer of style.layers) {
     const isLabel =
