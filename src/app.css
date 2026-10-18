@@ -1713,6 +1713,458 @@ html.dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
   }
 }
 
+/* ---------- 飞行足迹卡（左侧面板，默认折叠一行统计） ---------- */
+.journal-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.journal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.journal-head:hover .journal-title {
+  color: var(--text-strong);
+}
+
+.journal-title {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.journal-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.journal-chev {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 0.15s;
+}
+
+.journal-chev.open {
+  transform: rotate(180deg);
+}
+
+.journal-body {
+  padding: 2px 12px 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.journal-rows {
+  max-height: 200px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.journal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+}
+
+.journal-row:last-child {
+  border-bottom: none;
+}
+
+.journal-codes {
+  min-width: 0;
+  font-weight: 650;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journal-km {
+  margin-left: auto;
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--link);
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-date {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-x {
+  flex: none;
+  border: none;
+  background: var(--fill);
+  color: var(--text-muted);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.journal-x:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.journal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 7px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.journal-clear {
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.journal-clear:hover {
+  background: var(--danger-bg);
+}
+
+.journal-hint {
+  padding-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* ---------- 摘要卡：记入足迹按钮行 ---------- */
+.summary-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--hairline-strong);
+  position: relative;
+  z-index: 1;
+}
+
+.record-btn {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--fill-soft);
+  color: var(--text-btn);
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.12s;
+}
+
+.record-btn:hover {
+  background: var(--fill-hover);
+  color: var(--text-strong);
+}
+
+/* ---------- 航线收藏（右上角书签按钮 + 面板；与地图选项菜单同材质） ---------- */
+.fav-menu {
+  right: 62px;
+}
+
+.fav-panel {
+  width: 292px;
+  padding: 10px 12px;
+}
+
+.fav-save {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 4px;
+}
+
+.fav-name {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline);
+  background: var(--fill-soft);
+  padding: 0 9px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-strong);
+  outline: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.fav-name:focus {
+  background: var(--field-focus-bg);
+  border-color: var(--focus-ring);
+}
+
+.fav-name::placeholder {
+  color: var(--text-faint);
+}
+
+.fav-list {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.fav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 5px;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.fav-row:last-child {
+  border-bottom: none;
+}
+
+.fav-row:hover {
+  background: var(--sel-bg);
+}
+
+.fav-name-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fav-name-label b {
+  font-size: 12.5px;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fav-codes {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fav-x {
+  flex: none;
+  border: none;
+  background: var(--fill);
+  color: var(--text-muted);
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.fav-x:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.fav-empty {
+  padding: 12px 2px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* ---------- 机场 Pin 信息卡（点击 Pin 弹出；定位在点位上方，靠上时翻转到下方） ---------- */
+.airport-card {
+  position: absolute;
+  z-index: 990;
+  width: 232px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 12px;
+  transform: translate(-50%, calc(-100% - 14px));
+  animation: menu-in 0.16s ease;
+}
+
+.airport-card.flip {
+  transform: translate(-50%, 14px);
+}
+
+.airport-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.airport-card-code {
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--text-strong);
+}
+
+.airport-card-icao {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+
+.airport-card-x {
+  margin-left: auto;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.airport-card-x:hover {
+  background: var(--fill-hover);
+  color: var(--text-strong);
+}
+
+.airport-card-name {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.airport-card-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visit-btn {
+  margin-top: 8px;
+  width: 100%;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: var(--fill-soft);
+  color: var(--text-btn);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.visit-btn:hover {
+  background: var(--fill-hover);
+}
+
+.visit-btn.on {
+  background: var(--accent-soft);
+  color: var(--link);
+  font-weight: 650;
+}
+
+/* ---------- 删除/恢复撤销 toast（底部居中，8 秒自动过期） ---------- */
+.undo-toast {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  font-size: 12.5px;
+  color: var(--text);
+  max-width: calc(100vw - 32px);
+  animation: menu-in 0.16s ease;
+}
+
+.undo-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.undo-x {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.undo-x:hover {
+  background: var(--fill-hover);
+  color: var(--text-strong);
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 760px) {
   .flight-panel {
@@ -1744,6 +2196,12 @@ html.dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
     top: auto;
     bottom: 82px;
     left: 10px;
+    right: auto;
+  }
+
+  /* 收藏钮并排在地图选项钮右侧（38px 钮 + 10px 间距） */
+  .map-menu.fav-menu {
+    left: 58px;
     right: auto;
   }
 

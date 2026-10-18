@@ -15,10 +15,24 @@ English | [简体中文](README.zh-CN.md)
 - **3D globe:** At world zoom levels the map renders as a 3D globe floating in a starfield;
   zooming in transitions smoothly back to the flat map, and a reset entry restores the
   north-up, level view at any time.
+- **3D terrain:** Toggleable terrain relief (same data source as the hillshade) raises
+  mountains in 3D, in both globe and flat modes.
 - **Dark mode:** Panels and controls ship in a frosted dark theme by default; the map options
   menu switches back to light at any time (`?theme=light` deep-links it).
 - **Multiple routes:** Routes are managed in a list; each has independent visibility, color,
   and line width, and new routes are assigned colors automatically.
+- **Saved routes & local draft:** The whole route set — including colors, widths, visibility,
+  and real-route waypoints — is silently kept as a local draft, so opening the bare URL
+  restores your last session; sets can also be saved under a name as favorites and restored
+  with one click (undoable). Favorites and the draft live in your browser only and never
+  enter shared links.
+- **Flight log:** Mark airports as visited from the airport card, and log a route's distance
+  from the summary card; cumulative distance and the count of visited airports are tallied in
+  the flight-log card. Everything stays on your device.
+- **Airport card:** Clicking an airport pin on the map opens a small card with the airport's
+  name, IATA/ICAO codes, city/country, elevation, and coordinates — plus the visited toggle.
+- **Delete undo:** Deleting a route shows an undo entry at the bottom (for about 8 seconds)
+  that restores it in place with its styling.
 - **Great-circle geometry:** Per-leg distance and initial bearing, route totals, and
   km / mi / nm conversion. Routes crossing the antimeridian are drawn continuously.
 - **Flight time & cruise speed:** The summary card estimates flight time per leg using a
@@ -38,8 +52,9 @@ English | [简体中文](README.zh-CN.md)
   code or by name.
 - **Two input modes:** A tag-flow input for interactive composition, and a raw-text mode that
   accepts several routes pasted at once.
-- **Map options menu:** Basemap, 3D globe, view reset, place labels, and language live behind
-  a single button in the top-right corner.
+- **Map options menu:** Basemap, 3D globe, 3D terrain, view reset, place labels, and language
+  live behind a single button in the top-right corner; saved routes sit behind the bookmark
+  button next to it.
 - **URL deep links:** Routes, language, basemap, projection, unit, label visibility, and theme
   are all encoded in the URL and restored on load.
 
@@ -94,6 +109,7 @@ Application state can be preset through query parameters; the URL is kept in syn
 | `lang`    | `zh`, `en` | Place-label language |
 | `base`    | `vector`, `satellite` | Basemap mode |
 | `globe`   | `1` | `1` renders the map as a 3D globe at low zoom; omit for the flat map |
+| `terrain` | `1` | `1` enables 3D terrain relief; omit for the flat surface |
 | `u`       | `km`, `mi`, `nm` | Distance unit |
 | `labels`  | `0` | `0` hides place labels; omit to show them |
 | `theme`   | `light` | `light` uses the light UI theme; omit for dark mode |
@@ -104,8 +120,8 @@ Example: `/?route=LHR-SIN-SYD;PEK-JFK&base=satellite&u=nm`
 
 `src/data/airports.json` is generated from the [OurAirports](https://ourairports.com/data/)
 database (large/medium/small airports carrying an IATA code, plus large airports that have only
-an ICAO code) and is committed to this repository, so a fresh checkout works without
-regenerating it.
+an ICAO code, including an elevation field used by the airport card) and is committed to this
+repository, so a fresh checkout works without regenerating it.
 
 To rebuild from a newer OurAirports snapshot, download `airports.csv`, place it at
 `scripts/airports.csv`, and run:
@@ -121,7 +137,8 @@ npm run build:airports
 ├── src/
 │   ├── App.tsx                 # application state and URL synchronization
 │   ├── app.css                 # UI styling
-│   ├── components/             # search panel, route list, route summary, top-right controls
+│   ├── components/             # search panel, route list, route summary, flight log, favorites, airport card, top-right controls
+│   ├── state/saved.ts          # local persistence: draft / favorites / flight log (localStorage)
 │   ├── data/                   # airports.json (generated) and search helpers
 │   ├── geo/greatCircle.ts      # haversine distance, initial bearing, slerp sampling, units
 │   ├── i18n/strings.ts         # zh/en UI strings
@@ -158,7 +175,7 @@ of the map carries these credits; per the respective licenses, it must not be re
 - **Vector basemap style** — generated for this project; landcover and ground-use colors are
   derived from OSM Carto (CC0).
 - **Land cover base imagery** — NASA EOSDIS GIBS, restyled for this project.
-- **Terrain hillshade** — AWS Open Data Terrain Tiles (Mapzen).
+- **Terrain hillshade & 3D terrain** — AWS Open Data Terrain Tiles (Mapzen).
 - **Satellite imagery** — Stadia Maps (© CNES, Distribution Airbus DS, © Airbus DS, ©
   PlanetObserver — Contains Copernicus Data); the ocean tint is applied in-browser. Without an
   API key the app falls back to Esri World Imagery (Esri, Maxar, Earthstar Geographics).

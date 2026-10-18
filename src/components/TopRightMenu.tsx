@@ -8,6 +8,9 @@ interface Props {
   onBase: (m: BaseMode) => void;
   globeOn: boolean;
   onGlobe: (v: boolean) => void;
+  /** 3D 地形起伏开关（默认关） */
+  terrainOn: boolean;
+  onTerrain: (v: boolean) => void;
   onReset: () => void;
   lang: Lang;
   onLang: (l: Lang) => void;
@@ -32,7 +35,7 @@ const STADIA_SIGNUP_URL = 'https://client.stadiamaps.com/signup/';
 
 /** 右上角唯一入口：一个按钮拉起菜单，收拢底图/3D/回正/地名/语言/深色模式全部控件 */
 export function TopRightMenu({
-  base, onBase, globeOn, onGlobe, onReset, lang, onLang, labelsOn, onLabels, dark, onDark, planeOn, onPlane, t,
+  base, onBase, globeOn, onGlobe, terrainOn, onTerrain, onReset, lang, onLang, labelsOn, onLabels, dark, onDark, planeOn, onPlane, t,
   keyEditable, hasSatKey, onSatKey,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -182,6 +185,18 @@ export function TopRightMenu({
               aria-label={t.globeRow}
               title={t.globeTip}
               onClick={() => onGlobe(!globeOn)}
+            />
+          </div>
+          <div className="menu-row">
+            <span className="menu-label">{t.terrainRow}</span>
+            <button
+              type="button"
+              className={`switch${terrainOn ? ' on' : ''}`}
+              role="switch"
+              aria-checked={terrainOn}
+              aria-label={t.terrainRow}
+              title={t.terrainTip}
+              onClick={() => onTerrain(!terrainOn)}
             />
           </div>
           <button type="button" className="menu-row menu-action" title={t.resetViewTip} onClick={onReset}>

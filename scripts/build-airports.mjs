@@ -32,7 +32,7 @@ const col = (name) => header.indexOf(name);
 const C = {
   type: col('type'), name: col('name'), lat: col('latitude_deg'), lon: col('longitude_deg'),
   country: col('iso_country'), city: col('municipality'), sched: col('scheduled_service'),
-  icao: col('icao_code'), iata: col('iata_code'),
+  icao: col('icao_code'), iata: col('iata_code'), elev: col('elevation_ft'),
 };
 
 const SIZE_RANK = { large_airport: 0, medium_airport: 1, small_airport: 2 };
@@ -51,6 +51,8 @@ for (let i = 1; i < lines.length; i++) {
   const lat = parseFloat(f[C.lat]);
   const lon = parseFloat(f[C.lon]);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+  // 标高（英尺）供机场信息卡展示；缺测时不写字段，省一点体积
+  const elev = parseFloat(f[C.elev]);
   const a = {
     iata: iata || '',
     icao,
@@ -61,6 +63,7 @@ for (let i = 1; i < lines.length; i++) {
     lon,
     size,
     sched: f[C.sched] === 'yes' ? 1 : 0,
+    ...(Number.isFinite(elev) ? { elev: Math.round(elev) } : {}),
   };
   const key = a.iata || a.icao;
   const prev = airports.get(key);

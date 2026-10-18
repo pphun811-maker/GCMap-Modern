@@ -11,13 +11,18 @@ import {
   simbriefDispatchUrl, encodeSbfMeta,
 } from './simbrief/simbrief';
 import { STRINGS, type Lang } from './i18n/strings';
+import {
+  decodeRoute, encodeRoute, loadBootState, nextId,
+  readFavorites, readJournal, toggleVisited, writeDraft, writeFavorites, writeJournal,
+  type FavoriteEntry, type JournalData, type JournalEntry,
+} from './state/saved';
 import { SearchPanel } from './components/SearchPanel';
 import { RouteList, ROUTE_COLORS } from './components/RouteList';
 import { RouteSummary } from './components/RouteSummary';
 import { TopRightMenu } from './components/TopRightMenu';
-
-let uid = 0;
-const nextId = () => `rt-${++uid}`;
+import { FavoritesMenu } from './components/FavoritesMenu';
+import { JournalCard } from './components/JournalCard';
+import { AirportCard } from './components/AirportCard';
 
 const SB_USER_KEY = 'gcmap.sbfuser';
 
@@ -97,6 +102,8 @@ interface UrlState {
   sbf: string;
   /** 装饰小飞机巡航开关（默认关） */
   plane: boolean;
+  /** 3D 地形起伏（默认关） */
+  terrain: boolean;
 }
 
 // 非航线字段首帧同步解析（不依赖机场数据，chunk 加载窗口内也即时生效）
@@ -110,6 +117,7 @@ function parseUrl(q: URLSearchParams): UrlState {
     dark: q.get('theme') !== 'light',
     sbf: q.get('sbf') ?? '',
     plane: q.get('plane') === '1',
+    terrain: q.get('terrain') === '1',
   };
 }
 
@@ -128,9 +136,20 @@ type SbfUi =
   | { kind: 'waiting'; username: string; routeId: string; codes: string }
   | { kind: 'msg'; text: string; error: boolean };
 
+/** 单步撤销快照：恢复到操作（删除航线 / 恢复收藏替换）前的整组航线与选中项。
+ *  label 为已按语言格式化的展示文本（toast 直接显示） */
+interface PendingUndo {
+  label: string;
+  prevRoutes: RouteEntry[];
+  prevSelected: string | null;
+}
+
 export default function App() {
-  // 首帧抓取查询串：机场数据 chunk 就绪前 URL 同步挂起，之后不能回头读被 replaceState 改写过的 location
-  const bootQuery = useRef(new URLSearchParams(window.location.search)).current;
+  // 开机状态：URL 带参数（分享链接/书签）以 URL 为准；裸 URL 用本地草稿恢复上次会话
+  //（设置 + 含样式的航线快照）。bootQuery 始终是 URL 原始查询串，机场数据就绪后
+  // 解析航线参数仍从它读；草稿航线由 boot effect 直接解码，不走 URL 解析。
+  const boot = useRef(loadBootState()).current;
+  const bootQuery = boot.query;
   const initial = useRef(parseUrl(bootQuery)).current;
   const [lang, setLang] = useState<Lang>(initial.lang);
   const [base, setBase] = useState<BaseMode>(initial.base);
@@ -144,6 +163,14 @@ export default function App() {
   const [globeOn, setGlobeOn] = useState(initial.globe);
   const [dark, setDark] = useState(initial.dark);
   const [planeOn, setPlaneOn] = useState(initial.plane);
+  const [terrainOn, setTerrainOn] = useState(initial.terrain);
+  // 本地持久化状态：收藏 / 飞行足迹（草稿静默无 UI 状态；均为设备本地，不进 URL）
+  const [favorites, setFavorites] = useState<FavoriteEntry[]>(() => readFavorites());
+  const [journal, setJournal] = useState<JournalData>(() => readJournal());
+  // 单步撤销：最近一次"删除航线 / 恢复收藏"前的完整航线组（toast 入口，8 秒自动过期）
+  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
+  // 机场 Pin 信息卡（airport + Pin 屏幕坐标，相对地图容器）
+  const [pinCard, setPinCard] = useState<{ airport: Airport; x: number; y: number } | null>(null);
   const [legsMap, setLegsMap] = useState<Record<string, LegInfo[]>>({});
   const [panelOpen, setPanelOpen] = useState(true);
   const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
@@ -169,9 +196,15 @@ export default function App() {
   const baseRef = useRef(base);
   const labelsRef = useRef(labelsOn);
   const globeRef = useRef(globeOn);
+  // 语言/地形同样有就绪竞态：onReady 按"当前最新"重放
+  //（2026-10-18 修复：慢加载时切语言，地图标注停在初始语言）
+  const langRef = useRef(lang);
+  const terrainRef = useRef(terrainOn);
   baseRef.current = base;
   labelsRef.current = labelsOn;
   globeRef.current = globeOn;
+  langRef.current = lang;
+  terrainRef.current = terrainOn;
   // SimBrief 轮询：基线签名（undefined=基线未定 / null=无历史计划或基线拉取失败）/ 防重入 / 轮询函数
   const sbfBaselineRef = useRef<string | null | undefined>(undefined);
   const sbfBusyRef = useRef(false);
@@ -194,6 +227,10 @@ export default function App() {
         if (disposed || !mapDivRef.current) return;
         controller = new MapControllerImpl(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe);
         controllerRef.current = controller;
+        // 机场 Pin 点击 → 信息卡（水平夹紧在视口内，卡片宽约 230px）
+        controller.onPinClick((airport, x, y) => {
+          setPinCard({ airport, x: Math.min(Math.max(x, 125), window.innerWidth - 125), y });
+        });
         controller.onReady(() => {
           readyRef.current = true;
           setMapReady(true);
@@ -201,6 +238,11 @@ export default function App() {
           controller!.setLabelsVisible(labelsRef.current);
           // globe 初始值已在构造/buildStyle 内置，只重放就绪前发生过的切换
           if (globeRef.current !== initial.globe) controller!.setGlobe(globeRef.current);
+          // 语言初始值在构造参数内置、地形默认关，同样只重放就绪前发生过的切换
+          if (langRef.current !== initial.lang) {
+            controller!.setLabelsLanguage(langRef.current === 'zh' ? 'zh' : 'latin');
+          }
+          if (terrainRef.current !== initial.terrain) controller!.setTerrain(terrainRef.current);
           const latest = routesRef.current;
           if (latest.length) {
             setLegsMap(controller!.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));
@@ -219,28 +261,40 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 机场数据 chunk 就绪后：解析 URL 航线参数（快照/代码），无法识别的部分一次性提示（错误样式，可关闭）。
-  // 数据加载失败不拦界面：地图与面板仍可用，航线/搜索待下次刷新恢复
+  // 机场数据 chunk 就绪后：解析航线（URL 参数，或裸 URL 时的本地草稿快照），
+  // 无法识别的部分一次性提示（错误样式，可关闭）。
+  // 数据加载失败不拦界面：地图与面板仍可用，航线/搜索待下次刷新恢复；
+  // 且 urlBooted 保持 false（URL 回写挂起），否则空 routes 会把深链的 route/sbr 抹掉。
   useEffect(() => {
     let cancelled = false;
     airportsReady
       .then(() => {
         if (cancelled) return;
-        const { routes: parsed, dropped } = parseUrlRoutes(bootQuery);
-        if (parsed.length) {
-          setRoutes(parsed);
-          setSelectedId(parsed[parsed.length - 1].id);
+        if (boot.draftRoutes) {
+          // 裸 URL + 草稿：航线来自本地快照（含颜色/线宽/显隐/真实航路），无需 dropped 提示
+          const parsed = boot.draftRoutes.map(decodeRoute).filter((r): r is RouteEntry => r !== null);
+          if (parsed.length) {
+            setRoutes(parsed);
+            setSelectedId(parsed[parsed.length - 1].id);
+          }
+        } else {
+          const { routes: parsed, dropped } = parseUrlRoutes(bootQuery);
+          if (parsed.length) {
+            setRoutes(parsed);
+            setSelectedId(parsed[parsed.length - 1].id);
+          }
+          if (dropped.codes.length || dropped.snapshots) {
+            const parts: string[] = [];
+            if (dropped.codes.length) parts.push(t.urlDroppedCodes(dropped.codes));
+            if (dropped.snapshots) parts.push(t.urlDroppedSnapshots(dropped.snapshots));
+            showSbfMsg(parts.join(' '), true);
+          }
         }
-        if (dropped.codes.length || dropped.snapshots) {
-          const parts: string[] = [];
-          if (dropped.codes.length) parts.push(t.urlDroppedCodes(dropped.codes));
-          if (dropped.snapshots) parts.push(t.urlDroppedSnapshots(dropped.snapshots));
-          showSbfMsg(parts.join(' '), true);
-        }
+        // 只有成功才放开 URL 回写（2026-10-18 修复待证风险①）
+        setUrlBooted(true);
       })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setUrlBooted(true);
+      .catch(() => {
+        if (!cancelled) showSbfMsg(t.airportsFail, true);
       });
     return () => {
       cancelled = true;
@@ -307,6 +361,32 @@ export default function App() {
     if (readyRef.current) controllerRef.current?.setGlobe(globeOn);
   }, [globeOn]);
 
+  // 3D 地形（初始 false，onReady 只重放就绪前发生过的切换，这里处理 ready 后的切换）
+  useEffect(() => {
+    if (readyRef.current) controllerRef.current?.setTerrain(terrainOn);
+  }, [terrainOn, mapReady]);
+
+  // Pin 信息卡生命周期：地图一动即关（锚点坐标已失效）、Esc 关
+  useEffect(() => {
+    if (!pinCard) return;
+    const close = () => setPinCard(null);
+    const c = controllerRef.current;
+    c?.map.on('move', close);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPinCard(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      c?.map.off('move', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [pinCard]);
+
+  // 航线组变化即关信息卡（Pin 可能已随代码序列重建，锚点不再可靠）
+  useEffect(() => {
+    setPinCard(null);
+  }, [routes]);
+
   // 装饰小飞机总开关（默认关）。控制器是异步 chunk，mapReady 后才接得上
   useEffect(() => {
     controllerRef.current?.setPlanesEnabled(planeOn);
@@ -342,9 +422,18 @@ export default function App() {
     if (!labelsOn) q.set('labels', '0');
     if (!dark) q.set('theme', 'light');
     if (planeOn) q.set('plane', '1');
+    if (terrainOn) q.set('terrain', '1');
     const qs = q.toString();
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
-  }, [routes, lang, base, units, labelsOn, globeOn, dark, planeOn, urlBooted]);
+    // 草稿 = 同一份设置 + 完整航线快照（URL 分享格式不带样式，草稿在本地把
+    // 颜色/线宽/显隐/真实航路补齐，裸 URL 打开时恢复）。与 URL 回写共用挂起门：
+    // 机场数据失败期间不写，避免把深链/草稿一并清掉。
+    const set: Record<string, string> = {};
+    for (const [k, v] of q) {
+      if (k !== 'route' && k !== 'sbr' && k !== 'sbt') set[k] = v;
+    }
+    writeDraft({ v: 1, set, routes: routes.map(encodeRoute) });
+  }, [routes, lang, base, units, labelsOn, globeOn, dark, planeOn, terrainOn, urlBooted]);
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
@@ -384,11 +473,35 @@ export default function App() {
   };
 
   const deleteRoute = (id: string) => {
+    const removed = routes.find((r) => r.id === id);
+    if (!removed) return;
+    setPendingUndo({
+      label: t.deletedRoute(removed.airports.map((a) => a.iata || a.icao).join('-')),
+      prevRoutes: routes,
+      prevSelected: selectedId,
+    });
     const next = routes.filter((r) => r.id !== id);
     setRoutes(next);
     if (selectedId === id) setSelectedId(next.length ? next[next.length - 1].id : null);
     fitTargetRef.current = { all: true };
   };
+
+  // 单步撤销：恢复到删除/收藏恢复之前的整组航线与选中项（toast 入口；新操作会整条替换）
+  const undoPending = () => {
+    if (!pendingUndo) return;
+    const { prevRoutes, prevSelected } = pendingUndo;
+    setPendingUndo(null);
+    setRoutes(prevRoutes);
+    setSelectedId(prevSelected ?? (prevRoutes.length ? prevRoutes[prevRoutes.length - 1].id : null));
+    fitTargetRef.current = { all: true };
+  };
+
+  // 撤销 toast 8 秒自动过期（依赖对象身份：期间再次删除/恢复则计时重置）
+  useEffect(() => {
+    if (!pendingUndo) return;
+    const timer = setTimeout(() => setPendingUndo(null), 8000);
+    return () => clearTimeout(timer);
+  }, [pendingUndo]);
 
   // 选中航线的经停更新（当前唯一入口是搜索行的 ⇄ 反向钮；空数组=整条删除，防御保留）。
   // 经停一旦变动，原真实航路折线不再成立，回退为大圆弧
@@ -497,6 +610,90 @@ export default function App() {
     setSatKeySet(true);
   };
 
+  // ---- 航线收藏（本地持久化；恢复替换当前航线，经撤销可还原） ----
+  const saveFavorite = (name: string) => {
+    if (!routes.length) return;
+    const entry: FavoriteEntry = {
+      id: `fv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      name:
+        name.trim() ||
+        routes.map((r) => r.airports.map((a) => a.iata || a.icao).join('-')).join(' + '),
+      at: Date.now(),
+      routes: routes.map(encodeRoute),
+    };
+    setFavorites((list) => {
+      const next = [entry, ...list].slice(0, 20);
+      writeFavorites(next);
+      return next;
+    });
+  };
+
+  const applyFavorite = (id: string) => {
+    const fav = favorites.find((f) => f.id === id);
+    if (!fav) return;
+    const prevRoutes = routes;
+    const prevSelected = selectedId;
+    // 机场数据未就绪时 findByCode 查不到：挂在 ready 后再解码
+    void airportsReady.then(() => {
+      const parsed = fav.routes.map(decodeRoute).filter((r): r is RouteEntry => r !== null);
+      if (!parsed.length) return;
+      setPendingUndo({ label: t.restoredFavorite(fav.name), prevRoutes, prevSelected });
+      setRoutes(parsed);
+      setSelectedId(parsed[parsed.length - 1].id);
+      fitTargetRef.current = { all: true };
+    });
+  };
+
+  const deleteFavorite = (id: string) => {
+    setFavorites((list) => {
+      const next = list.filter((f) => f.id !== id);
+      writeFavorites(next);
+      return next;
+    });
+  };
+
+  // ---- 飞行足迹（去过机场 + 航程记录，localStorage 持久化） ----
+  const recordSelectedRoute = () => {
+    if (!selected) return;
+    const legs = legsMap[selected.id] ?? [];
+    if (!legs.length) return;
+    const entry: JournalEntry = {
+      id: `jr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      codes: selected.airports.map((a) => a.iata || a.icao).join('-'),
+      km: Math.round(legs.reduce((s, l) => s + l.km, 0)),
+      at: Date.now(),
+    };
+    setJournal((j) => {
+      const next = { ...j, entries: [entry, ...j.entries].slice(0, 200) };
+      writeJournal(next);
+      return next;
+    });
+  };
+
+  const toggleVisitedCode = (code: string) => {
+    setJournal((j) => {
+      const next = { ...j, visited: toggleVisited(j.visited, code) };
+      writeJournal(next);
+      return next;
+    });
+  };
+
+  const removeJournalEntry = (id: string) => {
+    setJournal((j) => {
+      const next = { ...j, entries: j.entries.filter((e) => e.id !== id) };
+      writeJournal(next);
+      return next;
+    });
+  };
+
+  const clearJournalEntries = () => {
+    setJournal((j) => {
+      const next = { ...j, entries: [] };
+      writeJournal(next);
+      return next;
+    });
+  };
+
   // 轮询一轮：签名与基线不同（或无基线）即自动导入
   pollSbfRef.current = () => {
     if (sbfUi.kind !== 'waiting' || sbfBusyRef.current) return;
@@ -580,6 +777,12 @@ export default function App() {
             onDismissMsg: cancelSbf,
           }}
         />
+        <JournalCard
+          journal={journal}
+          onRemoveEntry={removeJournalEntry}
+          onClear={clearJournalEntries}
+          t={t}
+        />
         {routes.length > 0 && (
           <div className="panel-lower">
             <RouteList
@@ -600,6 +803,9 @@ export default function App() {
               onUnits={setUnits}
               lang={lang}
               t={t}
+              onRecord={
+                selected && (legsMap[selected.id]?.length ?? 0) > 0 ? recordSelectedRoute : undefined
+              }
             />
           </div>
         )}
@@ -623,11 +829,21 @@ export default function App() {
           />
         </svg>
       </button>
+      <FavoritesMenu
+        favorites={favorites}
+        hasRoutes={routes.length > 0}
+        onSave={saveFavorite}
+        onApply={applyFavorite}
+        onDelete={deleteFavorite}
+        t={t}
+      />
       <TopRightMenu
         base={base}
         onBase={setBase}
         globeOn={globeOn}
         onGlobe={setGlobeOn}
+        terrainOn={terrainOn}
+        onTerrain={setTerrainOn}
         onReset={() => controllerRef.current?.resetView()}
         lang={lang}
         onLang={setLang}
@@ -645,6 +861,34 @@ export default function App() {
       <div className="brand">
         <span className="brand-name">{t.appName}</span>
       </div>
+      {pinCard && (
+        <AirportCard
+          airport={pinCard.airport}
+          x={pinCard.x}
+          y={pinCard.y}
+          visited={journal.visited.includes(pinCard.airport.iata || pinCard.airport.icao)}
+          onToggleVisited={() => toggleVisitedCode(pinCard.airport.iata || pinCard.airport.icao)}
+          onClose={() => setPinCard(null)}
+          t={t}
+        />
+      )}
+      {pendingUndo && (
+        <div className="card undo-toast" role="status">
+          <span className="undo-label">{pendingUndo.label}</span>
+          <button type="button" className="sb-go" onClick={undoPending}>
+            {t.undo}
+          </button>
+          <button
+            type="button"
+            className="undo-x"
+            title={t.close}
+            aria-label={t.close}
+            onClick={() => setPendingUndo(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
       {mapFailed && !mapReady && (
         <div className="map-fail card" role="alert">
           <span>{t.mapLoadFail}</span>

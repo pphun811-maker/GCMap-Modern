@@ -35,9 +35,11 @@ interface Props {
   onUnits: (u: Units) => void;
   lang: Lang;
   t: Strings;
+  /** 记入飞行足迹（App 传入；里程为当前 legs 之和） */
+  onRecord?: () => void;
 }
 
-export function RouteSummary({ legs, route, units, onUnits, lang, t }: Props) {
+export function RouteSummary({ legs, route, units, onUnits, lang, t, onRecord }: Props) {
   // ---- 时区到达时间线（路线③）：tz 查询懒加载 + 出发时刻（出发地当地墙钟，语义见 zonedToUtc） ----
   const [tzReady, setTzReady] = useState(tzLookupReady());
   const [departInput, setDepartInput] = useState<string | null>(null);
@@ -215,6 +217,27 @@ export function RouteSummary({ legs, route, units, onUnits, lang, t }: Props) {
             </div>
           ))}
           <span className="tl-note">{legs.length > 1 ? t.localNoteMulti : t.localNoteSingle}</span>
+        </div>
+      )}
+      {onRecord && (
+        <div className="summary-actions">
+          <button
+            type="button"
+            className="record-btn"
+            title={t.recordJournalTip}
+            onClick={onRecord}
+          >
+            <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden>
+              <path
+                d="M10 4v12M4 10h12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+            {t.recordJournal}
+          </button>
         </div>
       )}
     </div>

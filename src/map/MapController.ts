@@ -1,5 +1,5 @@
-// 地图引擎封装：底图切换 / 3D 地球投影 / 标注语言与显隐 / 多航线渲染 / 机场 Pin / 视野适配
-// v2 预留：3D 地形只需在此增加 setTerrain(dem)，业务层（航线数据、UI）不感知引擎实现。
+// 地图引擎封装：底图切换 / 3D 地球投影 / 3D 地形 / 标注语言与显隐 / 多航线渲染 / 机场 Pin / 视野适配
+// v2 预留：真实航班追踪等在此增加数据源，业务层（航线数据、UI）不感知引擎实现。
 
 // 本模块整体是异步 chunk（App 动态 import 本文件），maplibre CSS 跟着引擎走，
 // 不占首屏 CSS（2026-10-16 性能预算）
@@ -101,6 +101,8 @@ export class MapController {
   map: MLMap;
   private routes = new Map<string, RouteRecord>();
   private routeLabelLayers = new Set<string>();
+  // 机场 Pin 点击回调（App 渲染信息卡；null = 未注册）
+  private pinClickCb: ((a: Airport, x: number, y: number) => void) | null = null;
   private space: SpaceScene | null = null;
   // 观感动画共用一个 rAF ticker（生长/标签淡入/小飞机巡航），无动画时自停省电；
   // id 形如 `grow:<routeId>` / `labelfade:<routeId>` / `plane:<routeId>`
@@ -239,9 +241,25 @@ export class MapController {
     }
   }
 
+  /** 3D 地形起伏：复用成品样式里的 terrain-dem 源（AWS terrarium，与山体晕染同源）。
+   *  exaggeration 1.2 与整体观感匹配；关闭传 null 恢复平面。样式未就绪时调用会抛错，
+   *  由调用方保证时序（App 在 onReady 重放 / ready 后的 effect 里调用）。 */
+  setTerrain(on: boolean): void {
+    try {
+      this.map.setTerrain(on ? { source: 'terrain-dem', exaggeration: 1.2 } : null);
+    } catch (e) {
+      console.warn('[MapController] setTerrain failed', e);
+    }
+  }
+
   /** 视角回正：正北朝向 + 俯仰归零（中心与缩放不变） */
   resetView(): void {
     this.map.easeTo({ bearing: 0, pitch: 0, duration: 650 });
+  }
+
+  /** 注册机场 Pin 点击回调（屏幕坐标相对地图容器，信息卡由业务层渲染）。传 null 注销 */
+  onPinClick(cb: ((a: Airport, x: number, y: number) => void) | null): void {
+    this.pinClickCb = cb;
   }
 
   /** 切换地图标注语言（逐层替换 text-field 表达式） */
@@ -451,12 +469,21 @@ export class MapController {
         const code = a.iata || a.icao;
         const el = document.createElement('div');
         el.className = 'ap-pin';
+        el.style.cursor = 'pointer';
         el.innerHTML = `
           <div class="ap-pin-glow"></div>
           <div class="ap-pin-dot"></div>
           <div class="ap-pin-label"><b>${code}</b><span>${a.city || a.name}</span></div>
           ${e.airports.length > 2 ? `<div class="ap-pin-index">${idx + 1}</div>` : ''}`;
         el.style.setProperty('--pin-color', e.color);
+        // 点击 Pin → 业务层信息卡（屏幕坐标相对地图容器；el 为 0×0 定位锚，rect 即点位）
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (!this.pinClickCb) return;
+          const r = el.getBoundingClientRect();
+          const host = this.map.getContainer().getBoundingClientRect();
+          this.pinClickCb(a, r.left - host.left, r.top - host.top);
+        });
         // globe 模式下球体背面的 Pin 会被 maplibre 套 opacityWhenCovered（默认 0.2 → 半透明幽灵
         // 标志透出球面），置 0 让背面完全隐藏；mercator 下 isLocationOccluded 恒 false，无副作用
         const marker = new Marker({ element: el, anchor: 'center', opacityWhenCovered: 0 })

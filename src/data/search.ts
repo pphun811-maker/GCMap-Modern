@@ -8,6 +8,7 @@ export interface Airport {
   lon: number;
   size: number; // 0 large / 1 medium / 2 small
   sched: number; // 1 有定期航班
+  elev?: number; // 标高（英尺，OurAirports elevation_ft；个别机场缺测时无此字段）
 }
 
 // 机场数据懒加载（2026-10-16 性能预算）：airports.json（8799 条 / 1.28MB）不再打进首屏 JS，
