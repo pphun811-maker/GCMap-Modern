@@ -105,6 +105,9 @@ export class MapController {
   private pinClickCb: ((a: Airport, x: number, y: number) => void) | null = null;
   // 3D 地形当前是否开启（山体晕染层随它联动：官方不建议 hillshade+terrain 同开，双倍开销）
   private terrainActive = false;
+  // 当前底图模式：晕染层属于 base 组，卫星模式下随组隐藏（2026-10-18 回归修复：
+  // 性能补丁曾无条件把晕染设回可见，导致卫星模式洋底出现晕染波浪纹理）
+  private baseMode: BaseMode = 'vector';
   private space: SpaceScene | null = null;
   // 观感动画共用一个 rAF ticker（生长/标签淡入/小飞机巡航），无动画时自停省电；
   // id 形如 `grow:<routeId>` / `labelfade:<routeId>` / `plane:<routeId>`
@@ -137,6 +140,7 @@ export class MapController {
       hash: false,
       canvasContextAttributes: { preserveDrawingBuffer: true }, // 供截图/导出与自动化测试读帧
     });
+    this.baseMode = base;
     // NASA 地表覆盖绿毯数据署名：image source 不支持 attribution 字段（Style Spec），挂控件上
     this.map.addControl(
       new AttributionControl({ compact: true, customAttribution: 'Land cover © NASA EOSDIS GIBS' }),
@@ -163,6 +167,7 @@ export class MapController {
 
   /** 矢量 / 卫星底图切换（按 metadata.group 翻 visibility，航线层不受影响） */
   setBase(mode: BaseMode): void {
+    this.baseMode = mode;
     const layers = (this.map.getStyle() as any)?.layers as any[] | undefined;
     if (!layers) return;
     // 注意：样式里的组名是 base/satellite，对外模式值是 vector/satellite
@@ -260,10 +265,14 @@ export class MapController {
     }
   }
 
-  /** 山体晕染显隐联动：地形开=隐藏，地形关=恢复成品样式原状 */
+  /** 山体晕染显隐联动：地形开=隐藏（网格已带立体感，同开是双倍开销）；
+   *  地形关=随底图组走——矢量可见（成品样式原状），卫星随 base 组隐藏。
+   *  ⚠ 不能无条件设回可见：晕染属 base 组，卫星模式下必须保持隐藏，
+   *  否则洋底高程会以波浪纹理叠在卫星影像上（2026-10-18 回归）。 */
   private applyHillshadeVisibility(): void {
+    const vis = this.terrainActive || this.baseMode === 'satellite' ? 'none' : 'visible';
     try {
-      this.map.setLayoutProperty('terrain-hillshade', 'visibility', this.terrainActive ? 'none' : 'visible');
+      this.map.setLayoutProperty('terrain-hillshade', 'visibility', vis);
     } catch {
       /* 图层可能尚未就绪，忽略 */
     }
