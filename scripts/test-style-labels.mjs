@@ -31,7 +31,8 @@ try {
     const style = buildStyle(lang, base, globe);
     const res = validateStyleMin(style);
     check(`${label} 样式合法`, res.length === 0, res.slice(0, 2).map((e) => e.message).join(' | '));
-    check(`${label} 层数 127`, style.layers.length === 127, `${style.layers.length}`);
+    // 126 成品层 + 卫星影像 1 + 矢量水面 2（water-ocean / water-other，satellite 组）= 129
+    check(`${label} 层数 129`, style.layers.length === 129, `${style.layers.length}`);
     const ids = labelLayerIds(style);
     check(`${label} 标注层 20`, ids.length === 20, `${ids.length}`);
     const country = style.layers.find((l) => l.id === 'label_country_1');

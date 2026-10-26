@@ -9,7 +9,7 @@ GCMap Modern 是一个浏览器端的大圆航线地图工具。输入机场代�
 ## 功能
 
 - **双底图：** Apple 配色的矢量底图，全球地表覆盖影像垫底，带地形晕染与地表/土地利用
-  色块；另有卫星影像模式（Stadia 影像 + 浏览器内逐像素海洋调色）。两种模式下地名标注均保持可读。
+  色块；另有卫星影像模式（MapTiler 影像 + 陆地色彩管线 + 矢量水体铺色）。两种模式下地名标注均保持可读。
 - **3D 地球：** 全球视野下地图渲染为星空中的 3D 地球，放大时平滑过渡回平面地图；
   「回正」入口随时恢复正北朝向与俯平视角。
 - **3D 地形：** 开启后地形立体起伏（与山体晕染同源数据），山地地貌与航线立体呈现；
@@ -53,17 +53,18 @@ npm run dev
 
 开发服务器运行于 http://127.0.0.1:5173。
 
-### 可选：Stadia 卫星影像
+### 可选：MapTiler 卫星影像
 
-卫星底图使用 Stadia Maps 影像，海洋配色在浏览器内逐像素处理。两种激活方式：
+卫星底图使用 MapTiler 影像，海面以矢量水体多边形铺色（无误判）、陆地在浏览器内做
+色彩分级。两种激活方式：
 
 - **在线使用（无需构建）：** 打开右上角「地图选项」菜单，在「卫星 Key」一栏粘贴自己的
   API key 并回车即可，key 只保存在本机浏览器中，可随时点「换 Key」更换；
-- **自部署：** 在 [Stadia Maps](https://client.stadiamaps.com/signup/) 注册领取免费 API key，
+- **自部署：** 在 [MapTiler Cloud](https://cloud.maptiler.com) 注册领取免费 API key，
   在项目根目录创建 `.env.local` 文件并写入
 
 ```
-VITE_STADIA_KEY=你的key
+VITE_MAPTILER_KEY=你的key
 ```
 
 然后重启开发服务器（或重新构建）。没有 key 时自动回退到免 key 的 Esri World Imagery，
@@ -139,9 +140,8 @@ npm run build:airports
 - **矢量底图样式** — 本项目生成；地表覆盖与土地利用配色源自 OSM Carto（CC0）。
 - **地表覆盖影像** — NASA EOSDIS GIBS，本项目重新配色。
 - **地形晕染与 3D 地形** — AWS Open Data Terrain Tiles（Mapzen）。
-- **卫星影像** — Stadia Maps（© CNES, Distribution Airbus DS, © Airbus DS, © PlanetObserver
-  (Contains Copernicus Data)），海洋配色在浏览器内处理；未配置 key 时回退 Esri World Imagery
-  （Esri、Maxar、Earthstar Geographics）。
+- **卫星影像** — MapTiler（© MapTiler © OpenStreetMap contributors），海面以 OpenFreeMap
+  矢量水体多边形铺色；未配置 key 时回退 Esri World Imagery（Esri、Maxar、Earthstar Geographics）。
 - **机场数据库** — OurAirports.com（公有领域）。
 - **飞行计划数据** — [SimBrief](https://www.simbrief.com)（需免费注册）；真实航路来自用户
   自己账号生成的飞行计划。

@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 //（2026-10-16 性能预算：maplibre ~1MB 不再阻塞首帧）
 import type { MapController, LegInfo, RouteEntry } from './map/MapController';
 import type { BaseMode, LabelLanguage } from './map/styleFactory';
-import { KEY_EDITABLE, hasRuntimeStadiaKey } from './map/styleFactory';
+import { KEY_EDITABLE, hasRuntimeMapTilerKey } from './map/styleFactory';
 import { airportsReady, findByCode, findAirportNear, type Airport } from './data/search';
 import { convertDistance, haversineKm, type Units } from './geo/greatCircle';
 import {
@@ -178,7 +178,7 @@ export default function App() {
   // 地图样式加载失败（load 永不触发，如断网/瓦片服务不可达）：30s 未就绪给出可恢复提示
   const [mapFailed, setMapFailed] = useState(false);
   // 公开版：用户已填入自己的卫星 key（存 localStorage；填过则菜单收起为换 Key 按钮）
-  const [satKeySet, setSatKeySet] = useState(hasRuntimeStadiaKey);
+  const [satKeySet, setSatKeySet] = useState(hasRuntimeMapTilerKey);
 
   const mapDivRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
@@ -605,7 +605,7 @@ export default function App() {
   // 回到空闲态：取消等待/输入，或关掉导入结果提示（消息右上角的小 ×）
   const cancelSbf = () => setSbfUi({ kind: 'idle' });
 
-  // 公开版：用户在菜单填入自己的 Stadia key（UI 侧已预验证）→ 换卫星源并记住
+  // 公开版：用户在菜单填入自己的 MapTiler key（UI 侧已预验证）→ 换卫星源并记住
   const applySatKey = (key: string) => {
     controllerRef.current?.applySatelliteKey(key);
     setSatKeySet(true);

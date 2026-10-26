@@ -5,7 +5,7 @@
 // add_landcover / validate_style / run_tests）重生成，本文件只做接入主应用的适配：
 //   1. 绿毯 image source 的相对路径 → Vite 资产 URL；
 //   2. 逐层打 metadata.group（base / satellite / labels），供 MapController.setBase 翻可见性；
-//   3. 插入 Esri 卫星影像层（satellite 组）；
+//   3. 插入卫星影像层 + 矢量水面层（satellite 组）；
 //   4. 名字类标注层换成双语 name 表达式，并登记矢量模式配色（卫星切白字深晕后可恢复）。
 
 import type { StyleSpecification } from 'maplibre-gl';
@@ -23,56 +23,57 @@ export type BaseMode = 'vector' | 'satellite';
 const ESRI_IMAGERY =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
-// 卫星影像：Stadia 纯影像（EU 端点，美西端点不通），瓦片走 gcimg:// 协议经 oceanTint 逐像素海洋调色。
+// 卫星影像：MapTiler satellite-v2（2026-10-26 换源——Stadia 把影像挪出免费套餐，403 "Upgrade
+// for Access"），瓦片走 gsat:// 协议经 oceanTint 做陆地色彩管线；海面由本文件注入的矢量水面
+// 层负责（逐像素判海会在深色森林上出"水坑"，已废）。
 // key 绝不入库（公开仓库合规），两级来源：
-//   ① 构建期内置：本地构建读 .env.local 的 VITE_STADIA_KEY（桌面版同源）；
+//   ① 构建期内置：本地构建读 .env.local 的 VITE_MAPTILER_KEY（桌面版同源）；
 //   ② 运行时用户填入：公开构建（CI/Release 无 key）在菜单里填自己的 key，
-//      只存浏览器 localStorage（不进 URL、不进仓库），gcimg 协议处理器动态读取。
+//      只存浏览器 localStorage（不进 URL、不进仓库），gsat 协议处理器动态读取。
 // 两者都没有时回退免 key 的 Esri World Imagery。
-export const BAKED_STADIA_KEY = ((import.meta.env.VITE_STADIA_KEY as string | undefined) ?? '').trim();
-export const STADIA_KEY_STORAGE = 'gcmap.stadiakey';
+export const BAKED_MAPTILER_KEY = ((import.meta.env.VITE_MAPTILER_KEY as string | undefined) ?? '').trim();
+export const MAPTILER_KEY_STORAGE = 'gcmap.maptilerkey';
 
 let runtimeKey = '';
 if (typeof localStorage !== 'undefined') {
-  try { runtimeKey = localStorage.getItem(STADIA_KEY_STORAGE) ?? ''; } catch { /* 隐私模式等：当无 key */ }
+  try { runtimeKey = localStorage.getItem(MAPTILER_KEY_STORAGE) ?? ''; } catch { /* 隐私模式等：当无 key */ }
 }
 
-/** 当前生效的 Stadia key：构建期内置优先，其次用户运行时填入的（gcimg 协议处理器每次取瓦片时动态调用） */
-export function activeStadiaKey(): string {
-  return BAKED_STADIA_KEY || runtimeKey;
+/** 当前生效的 MapTiler key：构建期内置优先，其次用户运行时填入的（gsat 协议处理器每次取瓦片时动态调用） */
+export function activeMapTilerKey(): string {
+  return BAKED_MAPTILER_KEY || runtimeKey;
 }
 
 /** 公开构建（无内置 key）才提供"填入自己的 key"入口；本地/桌面带 key 版本不显示该 UI */
-export const KEY_EDITABLE = !BAKED_STADIA_KEY;
+export const KEY_EDITABLE = !BAKED_MAPTILER_KEY;
 
-/** 用户运行时填入 key：写 localStorage 持久化 + 热更新 gcimg 协议取值 */
-export function setRuntimeStadiaKey(key: string): void {
+/** 用户运行时填入 key：写 localStorage 持久化 + 热更新 gsat 协议取值 */
+export function setRuntimeMapTilerKey(key: string): void {
   runtimeKey = key;
   try {
-    if (key) localStorage.setItem(STADIA_KEY_STORAGE, key);
-    else localStorage.removeItem(STADIA_KEY_STORAGE);
+    if (key) localStorage.setItem(MAPTILER_KEY_STORAGE, key);
+    else localStorage.removeItem(MAPTILER_KEY_STORAGE);
   } catch { /* 隐私模式：本会话仍生效，刷新后丢失 */ }
 }
 
-export function hasRuntimeStadiaKey(): boolean {
+export function hasRuntimeMapTilerKey(): boolean {
   return !!runtimeKey;
 }
 
-/** 验证 key 可用性。两级判据（2026-10-11 审查后重做）：
- *  ① 形状校验：Stadia key 是 UUID（8-4-4-4-12），垃圾输入本地立即拒绝；
- *  ② 抓一张标准样式瓦片探测网络连通性（401 也归为无效）。
- *  ⚠ 已实测：Stadia 对任何带 Origin 的浏览器请求都放行瓦片（垃圾 key 也 200），
- *  key 只在非 CORS/API 调用上强制——所以客户端无法验证 key 是否真实存在，
- *  这两级只能挡"手滑输错/粘错"和探测断网，别指望它发现格式正确但无效的 key。 */
-export type StadiaKeyCheck = 'ok' | 'invalid' | 'network';
+/** 验证 key 可用性。两级判据：
+ *  ① 形状校验：MapTiler key 是 8-64 位 URL 安全串，明显垃圾本地立即拒绝（不做 UUID 式强校验——
+ *     MapTiler key 长度/字符集不统一，实测存在 20 位混合大小写）；
+ *  ② 抓一张卫星瓦片探测连通性（401/403 归为无效）。
+ *  ⚠ 客户端无法证明 key 的套餐/额度状态，只能挡"手滑输错/粘错"和探测断网。 */
+export type MapTilerKeyCheck = 'ok' | 'invalid' | 'network';
 
-const STADIA_KEY_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAPTILER_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
-export async function validateStadiaKey(key: string): Promise<StadiaKeyCheck> {
-  if (!STADIA_KEY_RE.test(key)) return 'invalid';
+export async function validateMapTilerKey(key: string): Promise<MapTilerKeyCheck> {
+  if (!MAPTILER_KEY_RE.test(key)) return 'invalid';
   try {
     const resp = await fetch(
-      `https://tiles-eu.stadiamaps.com/tiles/alidade_smooth/1/0/0.png?api_key=${encodeURIComponent(key)}`,
+      `https://api.maptiler.com/tiles/satellite-v2/1/1/0.jpg?key=${encodeURIComponent(key)}`,
     );
     return resp.ok ? 'ok' : 'invalid';
   } catch {
@@ -80,8 +81,14 @@ export async function validateStadiaKey(key: string): Promise<StadiaKeyCheck> {
   }
 }
 
-const STADIA_ATTRIBUTION =
-  '© CNES, Distribution Airbus DS, © Airbus DS, © PlanetObserver (Contains Copernicus Data) | © Stadia Maps';
+const MAPTILER_ATTRIBUTION = '© MapTiler © OpenStreetMap contributors';
+
+// 矢量水面层配色（卫星模式铺在影像上；藏蓝 = 旧 gcimg 调色的定稿目标色）
+// 不透明度 0.64（2026-10-26 用户定稿）：半透明让真实卫星水面纹理透出，同时保留藏蓝氛围；
+// 水面边界来自 OSM 数据，调多低都不会误染陆地。
+const WATER_OCEAN_COLOR = '#233466';
+const WATER_OTHER_COLOR = '#29407a';
+const WATER_OPACITY = 0.64;
 
 // 卫星模式的标注配色（白字 + 半透明深晕；白 halo 在影像上是突兀白边，深字又看不清）
 const SAT_TEXT_COLOR = '#FFFFFF';
@@ -145,21 +152,21 @@ function isNameLabel(textField: unknown): boolean {
 // 各标注层矢量模式配色（卫星切白后恢复用；每次 buildStyle 重建）
 const LABEL_PAINT_DEFAULTS: Record<string, { color: string; halo: string }> = {};
 
-// gcimg 瓦片 URL 版本号：换 key 时自增。key 不体现在 URL 里，不带版本号的话 maplibre
+// gsat 瓦片 URL 版本号：换 key 时自增。key 不体现在 URL 里，不带版本号的话 maplibre
 // 会命中瓦片缓存继续用旧 key 抓回的图；协议 URL 容忍 ?v=<n> 后缀（oceanTint 正则兼容）
-let stadiaTileVer = 0;
-export function bumpStadiaTileVersion(): void {
-  stadiaTileVer++;
+let satTileVer = 0;
+export function bumpSatTileVersion(): void {
+  satTileVer++;
 }
 
-/** Stadia 卫星源规格（gcimg:// 协议 + 海洋调色）；buildStyle 初始构建与换 key 重建共用 */
-export function stadiaSourceSpec(): any {
+/** MapTiler 卫星源规格（gsat:// 协议 + 陆地色彩管线）；buildStyle 初始构建与换 key 重建共用 */
+export function maptilerSourceSpec(): any {
   return {
     type: 'raster',
-    tiles: [`gcimg://{z}/{x}/{y}${stadiaTileVer ? `?v=${stadiaTileVer}` : ''}`],
+    tiles: [`gsat://{z}/{x}/{y}${satTileVer ? `?v=${satTileVer}` : ''}`],
     tileSize: 512,
     maxzoom: 18,
-    attribution: STADIA_ATTRIBUTION,
+    attribution: MAPTILER_ATTRIBUTION,
   };
 }
 
@@ -213,8 +220,30 @@ export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vect
     layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
     paint: { 'raster-opacity': 1 },
   });
-  style.sources['satellite-imagery'] = activeStadiaKey()
-    ? stadiaSourceSpec()
+  // 矢量水面层紧跟影像之后：海洋/湖河水域用成品多边形铺色，不逐像素判海
+  //（判据会把深色森林误判成海——2026-10-26 换源 MapTiler 后在泰加林/雨林实测实锤）。
+  // 与 satellite 同组，setBase 翻组时一起显隐；水面多边形精确，代价是海面为平色。
+  style.layers.splice(2, 0, {
+    id: 'water-ocean',
+    type: 'fill',
+    source: 'openmaptiles',
+    'source-layer': 'water',
+    metadata: { group: 'satellite' },
+    layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
+    filter: ['==', ['get', 'class'], 'ocean'],
+    paint: { 'fill-color': WATER_OCEAN_COLOR, 'fill-opacity': WATER_OPACITY },
+  }, {
+    id: 'water-other',
+    type: 'fill',
+    source: 'openmaptiles',
+    'source-layer': 'water',
+    metadata: { group: 'satellite' },
+    layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
+    filter: ['!=', ['get', 'class'], 'ocean'],
+    paint: { 'fill-color': WATER_OTHER_COLOR, 'fill-opacity': WATER_OPACITY },
+  });
+  style.sources['satellite-imagery'] = activeMapTilerKey()
+    ? maptilerSourceSpec()
     : {
         type: 'raster',
         tiles: [ESRI_IMAGERY],

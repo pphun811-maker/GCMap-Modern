@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BaseMode } from '../map/styleFactory';
-import { validateStadiaKey, type StadiaKeyCheck } from '../map/styleFactory';
+import { validateMapTilerKey, type MapTilerKeyCheck } from '../map/styleFactory';
 import type { Lang, Strings } from '../i18n/strings';
 
 interface Props {
@@ -26,12 +26,12 @@ interface Props {
   keyEditable: boolean;
   /** 用户已填入自己的 key（输入框+注册链接随之收起，只留换 Key 按钮） */
   hasSatKey: boolean;
-  /** 保存并应用 key（调用方已通过 validateStadiaKey 预验证） */
+  /** 保存并应用 key（调用方已通过 validateMapTilerKey 预验证） */
   onSatKey: (key: string) => void;
 }
 
-// Stadia 免费注册直达链接（client dashboard，免费计划无需信用卡）
-const STADIA_SIGNUP_URL = 'https://client.stadiamaps.com/signup/';
+// MapTiler 云控制台直达链接（免费计划：10 万瓦片请求/月，非商用）
+const MAPTILER_SIGNUP_URL = 'https://cloud.maptiler.com';
 
 /** 右上角唯一入口：一个按钮拉起菜单，收拢底图/3D/回正/地名/语言/深色模式全部控件 */
 export function TopRightMenu({
@@ -44,7 +44,7 @@ export function TopRightMenu({
   const [keyEditing, setKeyEditing] = useState(false);
   const [keyVal, setKeyVal] = useState('');
   const [keyChecking, setKeyChecking] = useState(false);
-  const [keyErr, setKeyErr] = useState<Exclude<StadiaKeyCheck, 'ok'> | null>(null);
+  const [keyErr, setKeyErr] = useState<Exclude<MapTilerKeyCheck, 'ok'> | null>(null);
 
   // 点外部 / Esc 关闭
   useEffect(() => {
@@ -78,7 +78,7 @@ export function TopRightMenu({
     }
     setKeyChecking(true);
     setKeyErr(null);
-    const res = await validateStadiaKey(key);
+    const res = await validateMapTilerKey(key);
     setKeyChecking(false);
     if (res !== 'ok') {
       setKeyErr(res);
@@ -167,7 +167,7 @@ export function TopRightMenu({
                     {keyChecking && <div className="key-status">{t.keyChecking}</div>}
                     {keyErr === 'invalid' && <div className="key-status key-err-text">{t.keyInvalid}</div>}
                     {keyErr === 'network' && <div className="key-status">{t.keyNetwork}</div>}
-                    <a href={STADIA_SIGNUP_URL} target="_blank" rel="noreferrer noopener">
+                    <a href={MAPTILER_SIGNUP_URL} target="_blank" rel="noreferrer noopener">
                       {t.keySignup}
                     </a>
                   </div>

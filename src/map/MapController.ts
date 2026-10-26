@@ -15,7 +15,7 @@ import {
 } from 'maplibre-gl';
 import {
   buildStyle, labelLayerIds, labelTextColors, firstLabelLayerId, nameExpr,
-  activeStadiaKey, setRuntimeStadiaKey, bumpStadiaTileVersion, stadiaSourceSpec,
+  activeMapTilerKey, setRuntimeMapTilerKey, bumpSatTileVersion, maptilerSourceSpec,
   GLOBE_SKY, FLAT_SKY, type BaseMode, type LabelLanguage,
 } from './styleFactory';
 import { ensureProtocol } from './oceanTint';
@@ -120,9 +120,9 @@ export class MapController {
   private planesEnabled = false;
 
   constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false) {
-    // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gcimg:// 瓦片会请求未注册协议；
+    // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gsat:// 瓦片会请求未注册协议；
     // getter 是动态的：用户运行时填入/更换 key 后无需重注册
-    ensureProtocol(() => activeStadiaKey());
+    ensureProtocol(() => activeMapTilerKey());
     if (import.meta.env.DEV && container.clientHeight < 200) {
       // 布局塌陷守卫：.map-root 若被 maplibre 自带 CSS 翻盘（.maplibregl-map{position:relative}）
       // 会塌成 0 高，地图只剩 300px 默认条、页面"白屏"——DOM 探针全绿，只有像素能发现
@@ -201,12 +201,12 @@ export class MapController {
     this.applyHillshadeVisibility();
   }
 
-  /** 用户在菜单填入自己的 Stadia key（UI 侧已通过抓瓦片预验证）：写 localStorage + 热更新
-   *  gcimg 协议取值，并整源重建卫星 source（tileSize/maxzoom 无法原地改）。
+  /** 用户在菜单填入自己的 MapTiler key（UI 侧已通过抓瓦片预验证）：写 localStorage + 热更新
+   *  gsat 协议取值，并整源重建卫星 source（tileSize/maxzoom 无法原地改）。
    *  换 key 时瓦片 URL 带 ?v=<n> 版本号穿透 maplibre 瓦片缓存；卫星层可见性保持不变。 */
   applySatelliteKey(key: string): void {
-    setRuntimeStadiaKey(key);
-    bumpStadiaTileVersion();
+    setRuntimeMapTilerKey(key);
+    bumpSatTileVersion();
     if (this.map.isStyleLoaded()) this.swapSatelliteSource();
     else this.map.once('load', () => this.swapSatelliteSource());
   }
@@ -218,9 +218,9 @@ export class MapController {
     const vis = prev?.layout?.visibility === 'visible';
     try { this.map.removeLayer('satellite'); } catch { /* 尚未存在 */ }
     try { this.map.removeSource('satellite-imagery'); } catch { /* 尚未存在 */ }
-    // 插回原位：background 之后、第一个非 background 层之前（与 buildStyle 的 splice(1,0) 一致）
+    // 插回原位：background 之后、矢量水面层（water-ocean）之前——影像在下、水面铺色在上
     const beforeId = style.layers.find((l: any) => l.id !== 'background' && l.id !== 'satellite')?.id;
-    this.map.addSource('satellite-imagery', stadiaSourceSpec());
+    this.map.addSource('satellite-imagery', maptilerSourceSpec());
     this.map.addLayer(
       {
         id: 'satellite',
