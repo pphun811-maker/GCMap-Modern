@@ -1,5 +1,6 @@
 // Real-MVT parity: static worker transport must preserve the accepted road baking and coordinates.
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import {createServer} from 'vite';
@@ -49,4 +50,18 @@ try{
  assert.ok(style.glyphs.includes('map-static/fonts/'));
  assert.ok(!JSON.stringify(style).includes('/map-res/'));
  console.log('PASS static build routes resources without Node endpoints');
+ // Execute the actual controller method without constructing a DOM/WebGL MapLibre instance.
+ const source=fs.readFileSync('src/map/MapController.ts','utf8');
+ const start=source.indexOf('  onReady(cb: () => void): void {');
+ assert.ok(start>=0,'Controller readiness method must be present');
+ const method=source.slice(start,source.indexOf('\n  }',start)+4).replace('onReady(cb: () => void): void {','onReady(cb) {');
+ const Harness=vm.runInNewContext(`class ReadinessHarness { ${method} }; ReadinessHarness;`,{console});
+ const controller=new Harness();
+ let fired = 0, subscribed = '';
+ controller.map = {isStyleLoaded:()=>false, once:(event,cb)=>{subscribed=event;cb();}};
+ controller.onReady(()=>fired++);
+ assert.equal(subscribed,'style.load');assert.equal(fired,1);
+ controller.styleReady=true;controller.map.once=()=>assert.fail('Already parsed style must be ready even with pending tiles');
+ controller.onReady(()=>fired++);assert.equal(fired,2);
+ console.log('PASS business readiness does not wait for all remote tiles');
 }finally{await vite.close();}

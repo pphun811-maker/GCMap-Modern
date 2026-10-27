@@ -155,6 +155,7 @@ export class MapController {
   private lastTickNow = 0;
   // 本次 syncRoutes 内已启动的生长动画数（多条航线错峰）
   private growCount = 0;
+  private styleReady = false;
   // 装饰小飞机总开关（默认关闭，右上菜单控制；URL plane=1）
   private planesEnabled = false;
 
@@ -247,6 +248,7 @@ export class MapController {
   private attachRuntimeLayers(): void {
     const style = this.map.getStyle() as any;
     if (!style?.layers) return;
+    this.styleReady = true;
     const anchor = lightingAnchorLayerId(style as StyleSpecification);
     // 行星光照/地表层
     if (this.planet) {
@@ -415,8 +417,8 @@ export class MapController {
 
   onReady(cb: () => void): void {
     const run = () => { try { cb(); } catch (e) { console.error('[MapController] onReady failed', e); } };
-    if (this.map.isStyleLoaded()) run();
-    else this.map.once('load', run);
+    if (this.styleReady) run();
+    else this.map.once('style.load', run);
   }
 
   /** 把当前状态（底图组 / 标注配色 / 卫星与水面互斥 / 行星与夜路开关）应用到地图。 */
@@ -475,6 +477,7 @@ export class MapController {
   setTheme(dark: boolean): void {
     if (dark === this.themeDark) return;
     this.themeDark = dark;
+    this.styleReady = false;
     this.disposeRuntimeLayers();
     const globe = this.map.getProjection()?.type === 'globe';
     this.map.setStyle(buildStyle(this.lang, this.baseMode, globe, dark), { diff: false });
