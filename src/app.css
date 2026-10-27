@@ -110,10 +110,9 @@ html.dark {
 .app-root .map-root {
   position: absolute;
   inset: 0;
-  /* 3D 地球太空底色：星空由 spaceScene 的 canvas 画（globe 模式挂载），这里只留
-     近黑深空渐变垫底（Google Earth 式的安静太空）；mercator 模式瓦片满屏覆盖，不可见 */
-  background-color: #010207;
-  background-image: radial-gradient(ellipse 120% 90% at 50% 42%, #060b18 0%, #02050e 55%, #000106 100%);
+  /* 太空底色取自已验收 demo（#030912）：globe 模式下星点画布垫在地图画布之下；
+     mercator 模式瓦片满屏覆盖，不可见 */
+  background-color: #030912;
 }
 
 /* ---------- 面板卡片：材质统一磨砂（浅色白玻璃 / 深色黑玻璃，不随底图模式变色） ---------- */
@@ -1294,6 +1293,11 @@ html.dark .tl-input {
   padding: 4px 12px;
   transform-origin: top right;
   animation: menu-in 0.16s ease;
+  /* 窄/矮窗口：菜单可滚动，新增昼夜行与卫星 key 行不会把控件顶出屏幕 */
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
 }
 
 @keyframes menu-in {
@@ -1332,6 +1336,62 @@ html.dark .tl-input {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--text);
+}
+
+/* ---------- 菜单内：昼夜光照时刻（demo cycle 语义；UTC HH:mm + 0–24 h 滑杆） ---------- */
+.menu-time {
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.menu-time-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+}
+
+.menu-time-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.menu-time input[type='range'] {
+  width: 100%;
+  height: 4px;
+  margin: 2px 0 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.menu-time input[type='range']:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.menu-time-hint {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+/* 本地版：菜单内卫星源二选一（dev-only；两行布局避免 246px 菜单挤压按钮文案） */
+.menu-sat {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.menu-sat .seg {
+  align-self: flex-start;
+}
+
+.menu-sat .seg button {
+  padding: 3px 8px;
 }
 
 .menu-action {
@@ -1501,6 +1561,11 @@ html.dark .tl-input {
   transform: translateX(16px);
 }
 
+.switch:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
 /* ---------- 品牌（左下角水印；白边保证两种底图下都可读） ---------- */
 .brand {
   position: absolute;
@@ -1519,81 +1584,53 @@ html.dark .tl-input {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
 }
 
-/* ---------- 机场 Pin（航线色圆点 + 光晕 + 标签；--pin-color 由每条航线写入） ---------- */
+/* ---------- 机场 Pin（demo 外观：小圆点 + 细描边 + 机场代码；真实坐标/点击/裁剪不变） ---------- */
 .ap-pin {
   position: relative;
   width: 0;
   height: 0;
 }
 
-.ap-pin-glow {
+/* 透明点击热区：视觉圆点只有 6px，热区保持可点（不改变观感） */
+.ap-pin-hit {
   position: absolute;
-  width: 60px;
-  height: 60px;
-  left: -30px;
-  top: -30px;
+  width: 24px;
+  height: 24px;
+  left: -12px;
+  top: -12px;
   border-radius: 50%;
-  background: radial-gradient(
-    50% 50% at 50% 50%,
-    color-mix(in srgb, var(--pin-color, #0c79fe) 70%, transparent) 0%,
-    transparent 100%
-  );
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .ap-pin-dot {
   position: absolute;
-  width: 14px;
-  height: 14px;
-  left: -7px;
-  top: -7px;
-  background: var(--pin-color, #0c79fe);
-  border: 3px solid #ffffff;
+  width: 6px;
+  height: 6px;
+  left: -3px;
+  top: -3px;
+  background: #f5dcb2;
+  border: 1.5px solid #0b2330;
   border-radius: 50%;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.32);
-}
-
-.ap-pin-index {
-  position: absolute;
-  top: -30px;
-  left: -10px;
-  width: 19px;
-  height: 19px;
-  background: var(--pin-color, #0c79fe);
-  color: #fff;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 
 .ap-pin-label {
   position: absolute;
-  left: 12px;
-  top: -13px;
-  background: var(--pinlabel-bg);
-  backdrop-filter: blur(6px);
-  border-radius: 8px;
-  padding: 2px 8px;
-  font-size: 11.5px;
+  left: 50%;
+  top: 5px;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
   white-space: nowrap;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.16);
+  color: #dde6db;
+  /* demo halo #10212b 1.5px：深色描边保证浅/深主题和卫星影像上都可读 */
+  text-shadow:
+    0 0 1.5px #10212b,
+    0 0 1.5px #10212b,
+    0 1px 2px rgba(0, 0, 0, 0.45);
   pointer-events: none;
-}
-
-.ap-pin-label b {
-  font-weight: 700;
-  color: var(--pinlabel-text);
-}
-
-.ap-pin-label span {
-  margin-left: 6px;
-  color: var(--pinlabel-sub);
-  font-weight: 450;
 }
 
 /* ---------- 装饰小飞机（沿航线巡航；--plane-color 随航线色，白描边保卫星底图可读） ---------- */

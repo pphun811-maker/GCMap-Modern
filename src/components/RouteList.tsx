@@ -3,12 +3,10 @@ import { createPortal } from 'react-dom';
 import type { LegInfo, RouteEntry } from '../map/MapController';
 import { convertDistance, type Units } from '../geo/greatCircle';
 import type { Strings } from '../i18n/strings';
+import { ROUTE_COLORS } from '../map/routeStyle';
 
-// 新航线自动配色循环，也是样式弹窗的预设色板（矢量浅底上足够深、彼此可分辨）
-export const ROUTE_COLORS = [
-  '#0B7BE8', '#E0433E', '#2E9E4F', '#F08C00',
-  '#8250DF', '#0FA3B1', '#D6336C', '#9A7D0A',
-];
+// 色板与地图航线默认色共用一份定义（demo 浅黄绿/青在前，其余保留原可辨识色）
+export { ROUTE_COLORS } from '../map/routeStyle';
 
 interface Props {
   routes: RouteEntry[];

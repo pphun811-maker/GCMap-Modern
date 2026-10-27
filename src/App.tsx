@@ -3,9 +3,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 //（2026-10-16 性能预算：maplibre ~1MB 不再阻塞首帧）
 import type { MapController, LegInfo, RouteEntry } from './map/MapController';
 import type { BaseMode, LabelLanguage } from './map/styleFactory';
-import { KEY_EDITABLE, hasRuntimeMapTilerKey } from './map/styleFactory';
+import {
+  KEY_EDITABLE, hasRuntimeMapTilerKey,
+} from './map/styleFactory';
 import { airportsReady, findByCode, findAirportNear, type Airport } from './data/search';
 import { convertDistance, haversineKm, type Units } from './geo/greatCircle';
+import { normalizeUtcHours } from './map/dayNight';
 import {
   decodePolyline, encodePolyline, dispatchTypeForKm, fetchLatestOfp, parseSbfMeta,
   simbriefDispatchUrl, encodeSbfMeta,
@@ -104,6 +107,10 @@ interface UrlState {
   plane: boolean;
   /** 3D 地形起伏（默认关） */
   terrain: boolean;
+  /** 昼夜光照开关（默认开，demo cycle 语义） */
+  cycle: boolean;
+  /** 手动 UTC 时刻（小时 0–24）；null = 跟随真实时间 */
+  utc: number | null;
 }
 
 // 非航线字段首帧同步解析（不依赖机场数据，chunk 加载窗口内也即时生效）
@@ -118,6 +125,8 @@ function parseUrl(q: URLSearchParams): UrlState {
     sbf: q.get('sbf') ?? '',
     plane: q.get('plane') === '1',
     terrain: q.get('terrain') === '1',
+    cycle: q.get('cycle') !== '0',
+    utc: normalizeUtcHours(q.get('utc')),
   };
 }
 
@@ -164,6 +173,9 @@ export default function App() {
   const [dark, setDark] = useState(initial.dark);
   const [planeOn, setPlaneOn] = useState(initial.plane);
   const [terrainOn, setTerrainOn] = useState(initial.terrain);
+  // 昼夜光照 + 手动 UTC 时刻（null=跟随真实时钟；拖动后不被 60s 定时器覆盖）
+  const [cycleOn, setCycleOn] = useState(initial.cycle);
+  const [utcHours, setUtcHours] = useState<number | null>(initial.utc);
   // 本地持久化状态：收藏 / 飞行足迹（草稿静默无 UI 状态；均为设备本地，不进 URL）
   const [favorites, setFavorites] = useState<FavoriteEntry[]>(() => readFavorites());
   const [journal, setJournal] = useState<JournalData>(() => readJournal());
@@ -179,7 +191,6 @@ export default function App() {
   const [mapFailed, setMapFailed] = useState(false);
   // 公开版：用户已填入自己的卫星 key（存 localStorage；填过则菜单收起为换 Key 按钮）
   const [satKeySet, setSatKeySet] = useState(hasRuntimeMapTilerKey);
-
   const mapDivRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
   const readyRef = useRef(false);
@@ -200,11 +211,19 @@ export default function App() {
   //（2026-10-18 修复：慢加载时切语言，地图标注停在初始语言）
   const langRef = useRef(lang);
   const terrainRef = useRef(terrainOn);
+  // 主题（深/浅）现在也同步地图样式：就绪前切换由 onReady 重放
+  const darkRef = useRef(dark);
+  // 昼夜/手动时刻同样有就绪竞态：onReady 按最新值重放
+  const cycleRef = useRef(cycleOn);
+  const utcRef = useRef(utcHours);
   baseRef.current = base;
   labelsRef.current = labelsOn;
   globeRef.current = globeOn;
   langRef.current = lang;
   terrainRef.current = terrainOn;
+  darkRef.current = dark;
+  cycleRef.current = cycleOn;
+  utcRef.current = utcHours;
   // SimBrief 轮询：基线签名（undefined=基线未定 / null=无历史计划或基线拉取失败）/ 防重入 / 轮询函数
   const sbfBaselineRef = useRef<string | null | undefined>(undefined);
   const sbfBusyRef = useRef(false);
@@ -225,7 +244,7 @@ export default function App() {
     import('./map/MapController')
       .then(({ MapController: MapControllerImpl }) => {
         if (disposed || !mapDivRef.current) return;
-        controller = new MapControllerImpl(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe);
+        controller = new MapControllerImpl(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe, initial.dark);
         controllerRef.current = controller;
         // 机场 Pin 点击 → 信息卡（水平夹紧在视口内，卡片宽约 230px）
         controller.onPinClick((airport, x, y) => {
@@ -239,11 +258,15 @@ export default function App() {
           // globe 初始值已在构造/buildStyle 内置，只重放就绪前发生过的切换
           if (globeRef.current !== initial.globe) controller!.setGlobe(globeRef.current);
           // 语言初始值在构造参数内置，只重放就绪前发生过的切换；
-          // 地形无条件重放（幂等）：?terrain=1 直开时靠它上地形，同时把晕染联动置好
+          // 主题同样（构造时已按 initial.dark 构建样式，就绪前切过则重建一次）
           if (langRef.current !== initial.lang) {
             controller!.setLabelsLanguage(langRef.current === 'zh' ? 'zh' : 'latin');
           }
+          if (darkRef.current !== initial.dark) controller!.setTheme(darkRef.current);
           controller!.setTerrain(terrainRef.current);
+          // 昼夜/手动时刻：就绪前用户可能已在菜单里改过，一律按最新值重放
+          controller!.setDayNight(cycleRef.current);
+          controller!.setManualUtc(utcRef.current);
           const latest = routesRef.current;
           if (latest.length) {
             setLegsMap(controller!.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));
@@ -367,6 +390,21 @@ export default function App() {
     if (readyRef.current) controllerRef.current?.setTerrain(terrainOn);
   }, [terrainOn, mapReady]);
 
+  // 昼夜光照开关 + 手动 UTC 时刻（控制器统一管理；真实 60s 时钟不会覆盖手动值）
+  useEffect(() => {
+    if (readyRef.current) controllerRef.current?.setDayNight(cycleOn);
+  }, [cycleOn, mapReady]);
+
+  useEffect(() => {
+    if (readyRef.current) controllerRef.current?.setManualUtc(utcHours);
+  }, [utcHours, mapReady]);
+
+  // 深浅主题：CSS 与地图样式同步（地图样式重建由 MapController 负责，
+  // 业务航线/Pin 在 style.load 后按保存参数重放）
+  useEffect(() => {
+    if (readyRef.current) controllerRef.current?.setTheme(dark);
+  }, [dark, mapReady]);
+
   // Pin 信息卡生命周期：地图一动即关（锚点坐标已失效）、Esc 关
   useEffect(() => {
     if (!pinCard) return;
@@ -424,6 +462,9 @@ export default function App() {
     if (!dark) q.set('theme', 'light');
     if (planeOn) q.set('plane', '1');
     if (terrainOn) q.set('terrain', '1');
+    // 昼夜设置与航班 ETA 完全独立：cycle=0 仅表示关闭；utc=0–24 是手动太阳时刻
+    if (!cycleOn) q.set('cycle', '0');
+    if (utcHours !== null) q.set('utc', String(Math.round(utcHours * 100) / 100));
     const qs = q.toString();
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
     // 草稿 = 同一份设置 + 完整航线快照（URL 分享格式不带样式，草稿在本地把
@@ -434,7 +475,7 @@ export default function App() {
       if (k !== 'route' && k !== 'sbr' && k !== 'sbt') set[k] = v;
     }
     writeDraft({ v: 1, set, routes: routes.map(encodeRoute) });
-  }, [routes, lang, base, units, labelsOn, globeOn, dark, planeOn, terrainOn, urlBooted]);
+  }, [routes, lang, base, units, labelsOn, globeOn, dark, planeOn, terrainOn, cycleOn, utcHours, urlBooted]);
 
   // ---- 面板操作 ----
   // 加航线（单条或多条）：逐条取色板中第一个未被占用的颜色，避免删加之后两条航线同色；用满 8 色后再循环
@@ -845,6 +886,10 @@ export default function App() {
         onGlobe={setGlobeOn}
         terrainOn={terrainOn}
         onTerrain={setTerrainOn}
+        cycleOn={cycleOn}
+        onCycle={setCycleOn}
+        utcHours={utcHours}
+        onUtc={setUtcHours}
         onReset={() => controllerRef.current?.resetView()}
         lang={lang}
         onLang={setLang}

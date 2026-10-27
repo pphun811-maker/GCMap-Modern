@@ -1,267 +1,84 @@
-// 3D 地球太空场景：程序化星空 + 地球边缘大气辉光（自绘 2D canvas，零依赖零资产文件）。
-// 观感基准是 Google Earth：太空近黑、星星低调，让地球当主角；大气 = 贴轮廓白亮带 +
-// 窄蓝光圈快速衰减，只画在球盘轮廓外侧。
+// 3D 地球太空背景：demo（round-11 候选 app.js）的确定性细星点风格。
 //
-// 两个已实测前提（HANDOFF §4「3D 地球批 2」）：maplibre v5.24 自带大气 shader 不渲染
-// （setSky / 样式级 sky 均无效，勿再追查）；WebGL 画布球盘内不透明、球外像素全透明。
-// 因此星空、辉光两张画布都垫在地图画布之下（星空最底、辉光贴其上）：辉光只在球外
-// 透明像素里可见 —— 地名标注（GL symbol 层，没法像 DOM marker 那样抬 z-index）、航线、
-// 机场卡片等地图上的任何内容都不会被盖住（2026-10-09 用户两轮反馈后定稿；此前辉光
-// 盖在地图上方，内侧大气带把 limb 附近的地名蒙灰，无法根治故整体挪到下面）。
+// 参考源：`stars()` —— 背景 #030912（见 app.css 的 .map-root）、固定种子 31057、
+// 430 个低亮度星点（5% 半径 1.2，其余 0.55；颜色 rgba(180,207,227, .12–.54)），
+// 画布 DPR 上限 1.5。星点随机序列由种子决定，重绘/窗口尺寸变化不会闪变。
 //
-// 辉光几何（2026-10-09 重做）：球心 = project(地图中心)，半径 = 球盘轮廓的解析解 ——
-// globe 是透视投影，屏幕上球面点 to |project(θ)-球心| 在地平线角处取到最大值，这个
-// 最大值就是轮廓半径（ternary search 求极值，只调 project()，不读像素）。
-// 不再逐帧扫描 WebGL 画布：交互期间 limb 像素天然不可靠——地名标注/白晕会凸出轮廓
-// （实测偏大 +25px），瓦片交叉淡入淡出又会把边缘掏空（实测偏小 -15px），「取 max + EMA
-// 偏差>8px 瞬跳」把这些污染逐帧放大成辉光亮边的来回弹跳（用户报告的拖动抽搐）。
-// 解析半径是相机的纯函数：拖动（zoom 不变）时严格恒定，缩放时逐帧精确跟随，零抖动。
+// 设计约束：
+//   - 只作用于地图区域，画布垫在地图画布之下，pointer-events:none，不遮挡面板/标注；
+//   - 只在 globe 模式挂载，切平面/销毁时整体卸载；
+//   - 只在尺寸变化时重绘，不做逐帧渲染；
+//   - 大气辉光归行星层（planet.frag 的 halo/haze）；这里不再画第二圈 CSS 光晕。
 
 import type { Map as MLMap } from 'maplibre-gl';
-import { destinationPoint } from '../geo/greatCircle';
-
-/** 球心到边缘角距 90° 对应的地面距离 = 地球周长的 1/4 */
-const QUARTER_CIRCUMFERENCE_KM = 40075.017 / 4;
 
 export interface SpaceScene {
   destroy(): void;
 }
 
-/** 固定种子伪随机：星空图案可复现，重绘不闪变 */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
+const STAR_SEED = 31057;
+const STAR_COUNT = 430;
+const STAR_MAX_DPR = 1.5;
+const STAR_COLOR = '180,207,227';
+
+/** demo 的 LCG（16807 乘子）；同一 seed 序列可复现 */
+function demoRandom(seedStart: number): () => number {
+  let seed = seedStart;
   return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
   };
 }
 
-type StarTint = '255,255,255' | '214,228,255' | '255,238,214' | '235,242,255';
-
-function drawStarDot(
-  ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number, tint: StarTint,
-): void {
-  ctx.fillStyle = `rgba(${tint},${alpha.toFixed(3)})`;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-/** 最亮一档的星：小光晕 + 极细衍射十字 + 核心（整体压得很低，太空保持安静） */
-function drawBrightStar(
-  ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number, tint: StarTint,
-): void {
-  const glowR = r * 4.5;
-  const g = ctx.createRadialGradient(x, y, 0, x, y, glowR);
-  g.addColorStop(0, `rgba(${tint},${(alpha * 0.55).toFixed(3)})`);
-  g.addColorStop(0.25, `rgba(${tint},${(alpha * 0.18).toFixed(3)})`);
-  g.addColorStop(1, `rgba(${tint},0)`);
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(x, y, glowR, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = `rgba(${tint},${(alpha * 0.12).toFixed(3)})`;
-  ctx.lineWidth = 0.7;
-  ctx.beginPath();
-  ctx.moveTo(x - r * 2.6, y);
-  ctx.lineTo(x + r * 2.6, y);
-  ctx.moveTo(x, y - r * 2.6);
-  ctx.lineTo(x, y + r * 2.6);
-  ctx.stroke();
-
-  drawStarDot(ctx, x, y, r * 0.8, Math.min(1, alpha + 0.1), tint);
-}
-
-/** 星空：近黑深空里的细碎星点 + 几乎察觉不到的银河冷光带。
- *  有意不加彩色星云/暗角（Google Earth 的太空是纯陪衬，抢戏的装饰都会显廉价） */
-function drawStarfield(canvas: HTMLCanvasElement, w: number, h: number, dpr: number): void {
+function drawStarfield(canvas: HTMLCanvasElement, width: number, height: number): void {
   const ctx = canvas.getContext('2d');
-  if (!ctx || w === 0 || h === 0) return;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const rnd = mulberry32(0x6c6d61);
-  const area = w * h;
+  if (!ctx || width <= 0 || height <= 0) return;
+  const ratio = Math.min(window.devicePixelRatio || 1, STAR_MAX_DPR);
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
 
-  ctx.save();
-  ctx.translate(w * 0.58, h * 0.34);
-  ctx.rotate(-0.46);
-  const bw = Math.max(w, h) * 1.5;
-  const bh = Math.min(w, h) * 0.5;
-  const band = ctx.createLinearGradient(0, -bh / 2, 0, bh / 2);
-  band.addColorStop(0, 'rgba(160,185,235,0)');
-  band.addColorStop(0.5, 'rgba(160,185,235,0.024)');
-  band.addColorStop(1, 'rgba(160,185,235,0)');
-  ctx.fillStyle = band;
-  ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
-  const bandStars = Math.round(area / 4200);
-  for (let i = 0; i < bandStars; i++) {
-    const x = (rnd() - 0.5) * bw;
-    const y = (rnd() - 0.5) * bh * 0.55 * (rnd() + rnd());
-    drawStarDot(ctx, x, y, 0.3 + rnd() * 0.4, 0.04 + rnd() * 0.13, '235,242,255');
-  }
-  ctx.restore();
-
-  const pickTint = (): StarTint => {
-    const t = rnd();
-    return t < 0.66 ? '255,255,255' : t < 0.86 ? '214,228,255' : '255,238,214';
-  };
-  const dust = Math.round(area / 4200);
-  for (let i = 0; i < dust; i++) {
-    drawStarDot(ctx, rnd() * w, rnd() * h, 0.3 + rnd() * 0.35, 0.05 + rnd() * 0.12, pickTint());
-  }
-  const main = Math.round(area / 13000);
-  for (let i = 0; i < main; i++) {
-    drawStarDot(ctx, rnd() * w, rnd() * h, 0.5 + rnd() * 0.5, 0.14 + rnd() * 0.24, pickTint());
-  }
-  const bright = Math.round(area / 55000);
-  for (let i = 0; i < bright; i++) {
-    drawBrightStar(ctx, rnd() * w, rnd() * h, 0.7 + rnd() * 0.7, 0.35 + rnd() * 0.25, pickTint());
+  const random = demoRandom(STAR_SEED);
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const x = random() * width;
+    const y = random() * height;
+    const r = random() > 0.97 ? 1.2 : 0.55;
+    const alpha = 0.12 + random() * 0.42;
+    ctx.fillStyle = `rgba(${STAR_COLOR},${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
-/** 球盘轮廓解析解：屏幕上球面点 |project(θ)-球心| 的最大值（θ=沿大圆的角距），
- *  即透视投影的地平线切锥在屏幕上的半径。rAt 在地平线角处单峰，ternary search 收敛。
- *  返回 null = 当前没有可画的球体（mercator 回落/球过大过小/投影异常）。
- *  实测（z0.3–z3.4，对照 WebGL 画布轮廓）：与像素真值差 <1.5%（AA 边缘宽度量级） */
-function limbGeometry(map: MLMap, maxR: number): { cx: number; cy: number; r: number } | null {
-  const c = map.getCenter();
-  const center = map.project([c.lng, c.lat]);
-  if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) return null;
-  const rAt = (arcDeg: number): number => {
-    const p = map.project(destinationPoint({ lon: c.lng, lat: c.lat }, 90, QUARTER_CIRCUMFERENCE_KM * (arcDeg / 90)));
-    return Math.hypot(p.x - center.x, p.y - center.y);
-  };
-  let lo = 2;
-  let hi = 178;
-  for (let i = 0; i < 40; i++) {
-    const m1 = lo + (hi - lo) / 3;
-    const m2 = hi - (hi - lo) / 3;
-    if (rAt(m1) < rAt(m2)) lo = m1;
-    else hi = m2;
-  }
-  const r = rAt((lo + hi) / 2);
-  if (!Number.isFinite(r) || r < 8 || r > maxR * 1.3) return null;
-  return { cx: center.x, cy: center.y, r };
-}
-
-/** 大气辉光（画布垫在地图画布之下，只有球盘轮廓外的部分可见）。
- *  返回 false = 当前没有可见球体，画布保持全透明 */
-function drawAtmosphere(map: MLMap, canvas: HTMLCanvasElement): boolean {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return false;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const geom = limbGeometry(map, Math.max(canvas.width, canvas.height));
-  if (!geom) return false;
-  const r = geom.r;
-
-  // 贴轮廓的白亮带 + 窄蓝光圈，~5% 半径内衰减完。渐变从 0.98R、alpha 0 起步：径向渐变
-  // 内侧会钳位到首档颜色，首档 nonzero 会在球盘还没出图时（瓦片未到、GL 画布透明）把
-  // 整个盘内蒙上白雾。峰值放在解析轮廓 1.0R 处 —— 解析半径与 GL 真边互差 <1.5%（AA 边
-  // 宽度量级），亮带始终压着真边，经边缘抗锯齿像素透出，不会出现暗缝
-  const glow = ctx.createRadialGradient(geom.cx, geom.cy, r * 0.98, geom.cx, geom.cy, r * 1.05);
-  glow.addColorStop(0, 'rgba(235,246,255,0)');
-  glow.addColorStop(0.28, 'rgba(233,244,255,0.62)');
-  glow.addColorStop(0.5, 'rgba(185,218,255,0.24)');
-  glow.addColorStop(0.78, 'rgba(110,158,242,0.08)');
-  glow.addColorStop(1, 'rgba(75,120,228,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  return true;
-}
-
-/** 挂载太空场景（仅 globe 模式调用；返回 destroy 供切回 mercator 时整体卸载） */
+/** 挂载太空背景（仅 globe 模式调用；返回 destroy 供切回 mercator 时整体卸载） */
 export function mountSpaceScene(map: MLMap): SpaceScene {
   const container = map.getContainer();
-
   const stars = document.createElement('canvas');
   stars.className = 'space-stars';
-  const atmo = document.createElement('canvas');
-  atmo.className = 'space-atmo';
-  for (const el of [stars, atmo]) {
-    Object.assign(el.style, {
-      position: 'absolute',
-      inset: '0',
-      width: '100%',
-      height: '100%',
-      pointerEvents: 'none',
-    });
-  }
-  atmo.style.opacity = '0';
-  atmo.style.transition = 'opacity 0.6s ease';
-
-  // 星空最底；辉光垫在地图画布（canvas-container）之下 —— GL 画布球外像素透明，光圈
-  // 从球背后透出，球上的标注/航线/机场卡片零遮挡，无需任何 z-index 补偿
+  Object.assign(stars.style, {
+    position: 'absolute',
+    inset: '0',
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+  });
+  // 最底层：地图画布球外像素透明，星点从球背后透出；App 面板在 map-root 之上，不受影响
   container.insertBefore(stars, container.firstChild);
-  container.insertBefore(atmo, map.getCanvasContainer());
 
-  // 辉光按 1 倍分辨率绘制省填充开销；半径是解析解，无需离屏画布和逐帧读像素
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const sizeStars = () => {
-    drawStarfield(stars, container.clientWidth, container.clientHeight, dpr);
+    drawStarfield(stars, container.clientWidth, container.clientHeight);
   };
-  atmo.width = Math.max(1, container.clientWidth);
-  atmo.height = Math.max(1, container.clientHeight);
   sizeStars();
 
-  let lastKey = '';
-  const drawAtmoFrame = () => {
-    const z = map.getZoom();
-    const c = map.getCenter();
-    // 中心/缩放/画布尺寸都没变就跳过（纯旋转时球盘不变）；投影切换由专属事件强制重画
-    const key = `${z.toFixed(3)}|${c.lng.toFixed(4)}|${c.lat.toFixed(4)}|${atmo.width}x${atmo.height}`;
-    if (key === lastKey) return;
-    lastKey = key;
-    drawAtmosphere(map, atmo);
-  };
-  const onRender = () => drawAtmoFrame();
-  const onResize = () => {
-    sizeStars();
-    atmo.width = Math.max(1, container.clientWidth);
-    atmo.height = Math.max(1, container.clientHeight);
-    lastKey = '';
-    drawAtmoFrame();
-  };
-  const onProjectionChange = () => {
-    lastKey = '';
-    drawAtmoFrame();
-  };
-  map.on('render', onRender);
+  const onResize = () => sizeStars();
   map.on('resize', onResize);
-  map.on('projectiontransition', onProjectionChange);
-  drawAtmoFrame();
-
-  requestAnimationFrame(() => {
-    drawAtmoFrame();
-    atmo.style.opacity = '1';
-  });
-
-  // 星空整体极缓慢的透明度呼吸，避免完全静止的死板感；尊重系统减弱动态偏好
-  const reduceMotion =
-    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduceMotion) atmo.style.transition = 'none';
-  let breathe: Animation | undefined;
-  if (!reduceMotion && typeof stars.animate === 'function') {
-    breathe = stars.animate(
-      [{ opacity: '1' }, { opacity: '0.9' }],
-      { duration: 6800, direction: 'alternate', iterations: Infinity, easing: 'ease-in-out' },
-    );
-  }
 
   return {
     destroy(): void {
-      map.off('render', onRender);
       map.off('resize', onResize);
-      map.off('projectiontransition', onProjectionChange);
-      breathe?.cancel();
       stars.remove();
-      atmo.remove();
     },
   };
 }

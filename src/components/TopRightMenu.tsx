@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BaseMode } from '../map/styleFactory';
-import { validateMapTilerKey, type MapTilerKeyCheck } from '../map/styleFactory';
+import {
+  validateMapTilerKey,
+  type MapTilerKeyCheck,
+} from '../map/styleFactory';
+import {
+  UTC_HOURS_MAX, UTC_HOURS_STEP, currentUtcHours, formatUtcHours, normalizeUtcHours,
+} from '../map/dayNight';
 import type { Lang, Strings } from '../i18n/strings';
 
 interface Props {
@@ -11,6 +17,12 @@ interface Props {
   /** 3D 地形起伏开关（默认关） */
   terrainOn: boolean;
   onTerrain: (v: boolean) => void;
+  /** 昼夜光照开关（demo cycle 语义） */
+  cycleOn: boolean;
+  onCycle: (v: boolean) => void;
+  /** 手动 UTC 时刻（小时 0–24）；null = 跟随真实时间 */
+  utcHours: number | null;
+  onUtc: (hours: number) => void;
   onReset: () => void;
   lang: Lang;
   onLang: (l: Lang) => void;
@@ -35,11 +47,21 @@ const MAPTILER_SIGNUP_URL = 'https://cloud.maptiler.com';
 
 /** 右上角唯一入口：一个按钮拉起菜单，收拢底图/3D/回正/地名/语言/深色模式全部控件 */
 export function TopRightMenu({
-  base, onBase, globeOn, onGlobe, terrainOn, onTerrain, onReset, lang, onLang, labelsOn, onLabels, dark, onDark, planeOn, onPlane, t,
+  base, onBase, globeOn, onGlobe, terrainOn, onTerrain, cycleOn, onCycle, utcHours, onUtc, onReset, lang, onLang, labelsOn, onLabels, dark, onDark, planeOn, onPlane, t,
   keyEditable, hasSatKey, onSatKey,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // 跟随真实时间时，菜单打开期间每 30 s 刷新一次显示（太阳每 60 s 重算，显示不需要更快）
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    if (!open || utcHours !== null) return;
+    const timer = setInterval(() => setClockTick((n) => n + 1), 30_000);
+    return () => clearInterval(timer);
+  }, [open, utcHours]);
+  // 卫星底图不叠地球昼夜：控件禁用但保留显示值，切回矢量恢复
+  const satMode = base === 'satellite';
+  const effectiveUtc = utcHours ?? currentUtcHours();
   // 卫星 key 导入：editing=输入态（无 key 时初始即输入态）；checking=验证中；err=上次验证失败（区分无效/网络）
   const [keyEditing, setKeyEditing] = useState(false);
   const [keyVal, setKeyVal] = useState('');
@@ -198,6 +220,42 @@ export function TopRightMenu({
               title={t.terrainTip}
               onClick={() => onTerrain(!terrainOn)}
             />
+          </div>
+          <div className="menu-row">
+            <span className="menu-label">{t.dayNightRow}</span>
+            <button
+              type="button"
+              className={`switch${cycleOn ? ' on' : ''}`}
+              role="switch"
+              aria-checked={cycleOn}
+              aria-label={t.dayNightRow}
+              title={t.dayNightTip}
+              disabled={satMode}
+              onClick={() => onCycle(!cycleOn)}
+            />
+          </div>
+          <div className="menu-time">
+            <div className="menu-time-head">
+              <span className="menu-label">{t.utcRow}</span>
+              <output className="menu-time-value">{formatUtcHours(effectiveUtc)} UTC</output>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={UTC_HOURS_MAX}
+              step={UTC_HOURS_STEP}
+              value={effectiveUtc}
+              aria-label={t.utcSliderLabel}
+              aria-valuetext={`${formatUtcHours(effectiveUtc)} UTC`}
+              disabled={satMode || !cycleOn}
+              onChange={(e) => {
+                const next = normalizeUtcHours(Number(e.target.value));
+                if (next !== null) onUtc(next);
+              }}
+            />
+            <div className="menu-time-hint">
+              {satMode ? t.utcVectorOnly : !cycleOn ? t.utcOffHint : utcHours === null ? t.utcFollow : t.utcManual}
+            </div>
           </div>
           <button type="button" className="menu-row menu-action" title={t.resetViewTip} onClick={onReset}>
             <span className="menu-label">{t.resetView}</span>

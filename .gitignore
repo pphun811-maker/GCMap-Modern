@@ -15,6 +15,9 @@ desktop/release/
 .zcode/
 .workbuddy/
 
+# Map resource service disk cache (PMTiles Range, LRU ≤256 MiB)
+.cache/
+
 # Local env files (API keys, e.g. VITE_STADIA_KEY) — never commit
 .env*
 

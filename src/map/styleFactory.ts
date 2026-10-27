@@ -1,25 +1,37 @@
-// 底图样式：成品样式 + 运行时适配
-// 样式本体是 design-assets 流水线的生成产物 styles/apple-landcover.json（126 层：
-// Apple 配色 + NASA 全球绿毯两级金字塔 + DEM hillshade + 地表/土地利用色块），
-// 不要在这里复刻或手改样式本体 —— 改观感回 design-assets 流水线（make_apple_starter /
-// add_landcover / validate_style / run_tests）重生成，本文件只做接入主应用的适配：
-//   1. 绿毯 image source 的相对路径 → Vite 资产 URL；
+// 底图样式：Flightline 已验收地图（round-11 冻结输入）+ 运行时适配。
+//
+// 2026-10-27 主项目整合：原先 design-assets 的 Apple/OpenFreeMap 矢量样式退出运行时，
+// vector 槽位改由已验收的 Flightline 底图承担（用户授权“直接把原先的矢量图替代了”）。
+// 样式本体是候选 styles/dark.json / light.json 的原样副本（SHA 见 REVIEW-REQUEST），
+// 本文件只做接入主项目所需的适配，不重调已过的配色：
+//   1. 样式内所有资源（瓦片 / glyphs / 道路 / 行星纹理）改走主项目自己的 /map-res/ 前缀；
 //   2. 逐层打 metadata.group（base / satellite / labels），供 MapController.setBase 翻可见性；
-//   3. 插入卫星影像层 + 矢量水面层（satellite 组）；
-//   4. 名字类标注层换成双语 name 表达式，并登记矢量模式配色（卫星切白字深晕后可恢复）。
+//   3. 名字类标注层换成按真实字段（name:en / name:zh-Hans / name）构造的双语表达式；
+//   4. 插入卫星影像层 + 矢量水面层（卫星组；OpenFreeMap 的 water 多边形仅服务卫星水面）；
+//   5. 记录默认隐藏层（occlusion-depth-cutoff / relief），翻组时不得把它们设回可见。
+//
+// 卫星影像保留 MapTiler/Esri、极区选片补偿与水面显隐。
 
 import type { StyleSpecification } from 'maplibre-gl';
-import appleLandcoverRaw from '../../design-assets/styles/apple-landcover.json?raw';
-// 绿毯用无损 WebP（ffmpeg libwebp q100 由同名 PNG 逐像素转出，PSNR=inf 观感零差异），
-// 体积比 PNG 小 30%：SD 275→194KB、HD 3.18→2.21MB。design-assets 流水线仍产出 PNG，
-// 应用侧接入时换用这里的 webp 副本。
-import globalLcUrl from '../../design-assets/demo/tiles/global-lc-merc.webp?url';
-import globalLcHdUrl from '../../design-assets/demo/tiles/global-lc-merc-hd.webp?url';
+import darkRaw from './flightline/styles/dark.json?raw';
+import lightRaw from './flightline/styles/light.json?raw';
 
 export type LabelLanguage = 'latin' | 'zh';
 export type BaseMode = 'vector' | 'satellite';
 
-// OpenFreeMap 公共瓦片服务（免 key）；样式 CC0，瓦片数据 OSM/ODbL —— attribution 必须保留
+// 地图资源前缀：dev / preview 由 server/mapResources.mjs 同源托管；支持 Vite base 子路径。
+// MapLibre 的 worker 构造 Request 时没有 document base URL，所以这里必须给出绝对地址。
+const PAGE_HREF = typeof window !== 'undefined' ? window.location.href : 'http://localhost/';
+
+export function mapResourceUrl(pathname: string): string {
+  const base = import.meta.env.BASE_URL || '/';
+  const url = new URL(`${base}map-res/${pathname.replace(/^\/+/, '')}`, PAGE_HREF).href;
+  return url.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
+}
+
+// ---------------------------------------------------------------------------
+// 卫星影像（并行工作，语义未改）
+// ---------------------------------------------------------------------------
 const ESRI_IMAGERY =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
@@ -44,7 +56,8 @@ export function activeMapTilerKey(): string {
   return BAKED_MAPTILER_KEY || runtimeKey;
 }
 
-/** 公开构建（无内置 key）才提供"填入自己的 key"入口；本地/桌面带 key 版本不显示该 UI */
+/** 公开构建（无内置 key）才提供"填入自己的 key"入口；
+ *  本地/桌面带 key 版本不显示该 UI。 */
 export const KEY_EDITABLE = !BAKED_MAPTILER_KEY;
 
 /** 用户运行时填入 key：写 localStorage 持久化 + 热更新 gsat 协议取值 */
@@ -94,16 +107,15 @@ const WATER_OPACITY = 0.64;
 const SAT_TEXT_COLOR = '#FFFFFF';
 const SAT_TEXT_HALO = 'rgba(0,0,0,0.55)';
 
-// 3D 地球的太空底色与大气辉光（sky-color 透明：深空与星星做在 .map-root 的 CSS 背景上，
-// 大气辉光若有渲染则叠加在星空之上；fog 全透明，杜绝平面模式俯仰时出雾色）
+// 3D 地球的 sky：与 demo `setup()` 完全一致——全透明、atmosphere-blend 0。
+// demo 的太空/大气只由 PlanetLayer 的 halo/haze 绘制；MapLibre 自带 sky/atmosphere
+// 若保留，会在地球边缘（尤其左上角）叠出一大片外扩辉光，与 demo 不一致。
 export const GLOBE_SKY = {
-  'sky-color': 'rgba(2,4,12,0)',
-  'sky-horizon-blend': 0.6,
-  'horizon-color': '#4a7ab5',
-  'horizon-fog-blend': 0.5,
+  'sky-color': 'rgba(0,0,0,0)',
+  'horizon-color': 'rgba(0,0,0,0)',
   'fog-color': 'rgba(0,0,0,0)',
   'fog-ground-blend': 0,
-  'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 6, 0.8, 9, 0] as any,
+  'atmosphere-blend': 0,
 };
 export const FLAT_SKY = {
   'sky-color': 'rgba(0,0,0,0)',
@@ -113,38 +125,32 @@ export const FLAT_SKY = {
   'atmosphere-blend': 0,
 };
 
-// icon-only / ref 徽章类 symbol：属于路网表面元素，随 base 组隐藏，不参与语言切换与配色
-const BASE_GROUP_SYMBOLS = new Set([
-  'road_one_way_arrow',
-  'road_one_way_arrow_opposite',
-  'highway-shield-non-us',
-  'highway-shield-us-interstate',
-  'road_shield_us',
-]);
-
-/** 受守卫的英文名子表达式：只有 name_en 存在且长度 > 1 时才采用，否则退回 name:latin → name。
- *  原因（已实测瓦片确认）：上游把 Türkiye 的 name_en 截断成单字符 "T"，直接 coalesce(name_en, name)
- *  会让英文模式下的国名只剩一个字母。name:latin 在该国是完好的 "Türkiye"。
- *  ⚠ `has` 守卫必须留：name_en 缺失时 length 会拿到 null 而报错，all 短路后再取长度才不会污染错误通道。 */
+/** 名字表达式：Flightline 瓦片只带 name / name:en / name:zh-Hans / name:zh-Hant（实测
+ *  Protomaps Basemap 4.14/4.15 schema，无 name:latin）。守卫保留：上游把 Türkiye 的
+ *  name_en 截断成单字符 "T"，直接 coalesce(name_en, name) 会让英文模式只剩一个字母。
+ *  ⚠ `has` 守卫必须留：name_en 缺失时 length 会拿到 null 而报错，all 短路后再取长度
+ *  才不会污染错误通道。 */
 function latinName(): any {
   return [
     'case',
     ['all', ['has', 'name_en'], ['>', ['length', ['to-string', ['get', 'name_en']]], 1]],
     ['get', 'name_en'],
-    ['get', 'name:latin'],
+    ['get', 'name'],
   ];
 }
 
-/** 地名取值表达式：zh 优先简体字段，latin 用英文名（OpenFreeMap 瓦片字段已实测支持）。
- *  外层 to-string 包一层：无 name 的要素（部分无名 waterway）求值结果保持空串而不是 null。 */
+/** 地名取值表达式：zh 优先简体 → 繁体；latin 用英文名。外层 to-string 包一层：
+ *  无 name 的要素（部分无名 waterway）求值结果保持空串而不是 null。 */
 export function nameExpr(lang: LabelLanguage): any {
   if (lang === 'zh') {
-    return ['to-string', ['coalesce', ['get', 'name:zh-Hans'], ['get', 'name:zh'], latinName(), ['get', 'name']]];
+    return ['to-string', ['coalesce',
+      ['get', 'name:zh-Hans'], ['get', 'name:zh-Hant'], latinName(), ['get', 'name'],
+    ]];
   }
   return ['to-string', ['coalesce', latinName(), ['get', 'name']]];
 }
 
-/** text-field 是否取自 name 类字段（ref 徽章 / 纯图标层不算） */
+/** text-field 是否取自 name 类字段（路网箭头 / 纯图标层不算） */
 function isNameLabel(textField: unknown): boolean {
   return textField != null && JSON.stringify(textField).includes('"name');
 }
@@ -170,34 +176,70 @@ export function maptilerSourceSpec(): any {
   };
 }
 
-export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vector', globe = false): StyleSpecification {
-  const style = JSON.parse(appleLandcoverRaw) as any;
-  for (const k of Object.keys(LABEL_PAINT_DEFAULTS)) delete LABEL_PAINT_DEFAULTS[k];
+/** 卫星源：MapTiler gsat；无 key 回退 Esri。 */
+export function satelliteSourceSpec(): any {
+  if (activeMapTilerKey()) return maptilerSourceSpec();
+  return {
+    type: 'raster',
+    tiles: [ESRI_IMAGERY],
+    tileSize: 256,
+    maxzoom: 19,
+    attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+  };
+}
 
-  // 3D 地球（?globe=1 直开时内置，避免首帧"先平后球"跳变；运行时切换走 MapController.setGlobe）
+/** 所有样式资源统一改走主项目资源前缀（绝对地址，worker 可用） */
+function rewriteResourceUrls(style: any): void {
+  style.glyphs = mapResourceUrl('fonts/{fontstack}/{range}.pbf');
+  const sourceUrls: Record<string, string> = {
+    world: mapResourceUrl('tiles/world/{z}/{x}/{y}.pbf'),
+    bathymetry: mapResourceUrl('tiles/bathymetry/{z}/{x}/{y}.pbf'),
+    buildings: mapResourceUrl('tiles/buildings/{z}/{x}/{y}.pbf'),
+    dem: mapResourceUrl('tiles/terrain/{z}/{x}/{y}.png'),
+  };
+  for (const [id, url] of Object.entries(sourceUrls)) {
+    const source = style.sources[id];
+    if (source && Array.isArray(source.tiles)) source.tiles = [url];
+  }
+}
+
+export function buildStyle(
+  lang: LabelLanguage = 'latin',
+  base: BaseMode = 'vector',
+  globe = false,
+  dark = true,
+): StyleSpecification {
+  const style = JSON.parse(dark ? darkRaw : lightRaw) as any;
+  for (const k of Object.keys(LABEL_PAINT_DEFAULTS)) delete LABEL_PAINT_DEFAULTS[k];
+  rewriteResourceUrls(style);
+
   if (globe) {
     style.projection = { type: 'globe' };
     style.sky = { ...GLOBE_SKY };
   }
 
-  // 绿毯整图改走 Vite 资产 URL（JSON 里的 ../demo/tiles 相对路径在应用里不存在）
-  style.sources['global-landcover-img'].url = globalLcUrl;
-  style.sources['global-landcover-hd-img'].url = globalLcHdUrl;
-  // 成品样式靠 demo 页 AttributionControl 署名，应用侧署名挂在 source 上
-  style.sources.openmaptiles.attribution = '© OpenStreetMap contributors · OpenFreeMap';
-
-  // 3D 地形成本控制（2026-10-18 用户实测矢量+地形卡顿）：深级 DEM 瓦片网格密度大、
-  // 拖拽/缩放帧开销高，航线图的常用视野（z≤9 的山脉走廊）用不到 z12 以上的地形细节。
-  // 封顶 12：城市级缩放也能保持流畅，山区观感几乎无损。
-  const dem = style.sources['terrain-dem'] as { maxzoom?: number } | undefined;
-  if (dem && (dem.maxzoom ?? 15) > 12) dem.maxzoom = 12;
+  // 默认隐藏层（候选样式的深度裁剪/晕染默认 visibility:none）：翻组时不得设回可见。
+  const hiddenByDefault = new Set<string>();
+  for (const layer of style.layers) {
+    if (layer.layout?.visibility === 'none') hiddenByDefault.add(layer.id);
+  }
 
   const name = nameExpr(lang);
   for (const layer of style.layers) {
     const isLabel =
-      layer.type === 'symbol' && !BASE_GROUP_SYMBOLS.has(layer.id) && isNameLabel(layer.layout?.['text-field']);
-    layer.metadata = { ...(layer.metadata ?? {}), group: isLabel ? 'labels' : 'base' };
-    if (!isLabel) continue;
+      layer.type === 'symbol' && isNameLabel(layer.layout?.['text-field']);
+    layer.metadata = {
+      ...(layer.metadata ?? {}),
+      group: isLabel ? 'labels' : 'base',
+      ...(hiddenByDefault.has(layer.id) ? { hiddenByDefault: true } : {}),
+    };
+    if (!isLabel) {
+      // ?base=satellite 直开时先把 base 组收起来：等 onReady 再收会露出矢量底图。
+      if (base === 'satellite') {
+        layer.layout = { ...(layer.layout ?? {}), visibility: 'none' };
+      }
+      continue;
+    }
     layer.layout = layer.layout ?? {};
     layer.paint = layer.paint ?? {};
     layer.layout['text-field'] = name;
@@ -211,25 +253,29 @@ export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vect
     }
   }
 
-  // 卫星影像：插在 background 之后（与 base 组互斥，?base=satellite 直开时内置可见避免闪白）
+  // 卫星影像：插在 background 之后（与 base 组互斥，?base=satellite 直开时内置可见避免闪白）。
+  const satVisible = base === 'satellite';
   style.layers.splice(1, 0, {
     id: 'satellite',
     type: 'raster',
     source: 'satellite-imagery',
     metadata: { group: 'satellite' },
-    layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
+    layout: { visibility: satVisible ? 'visible' : 'none' },
     paint: { 'raster-opacity': 1 },
   });
   // 矢量水面层紧跟影像之后：海洋/湖河水域用成品多边形铺色，不逐像素判海
   //（判据会把深色森林误判成海——2026-10-26 换源 MapTiler 后在泰加林/雨林实测实锤）。
-  // 与 satellite 同组，setBase 翻组时一起显隐；水面多边形精确，代价是海面为平色。
+  // 与 satellite 同组，setBase 翻组时一起显隐。
+  // Flightline 底图自身的水面来自 world 矢量源；这里的 OpenFreeMap water 源只服务卫星模式，
+  // 不能改用 world 源（字段/覆盖不同会把卫星水面弄丢）。
+  const waterVisible = satVisible;
   style.layers.splice(2, 0, {
     id: 'water-ocean',
     type: 'fill',
     source: 'openmaptiles',
     'source-layer': 'water',
     metadata: { group: 'satellite' },
-    layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
+    layout: { visibility: waterVisible ? 'visible' : 'none' },
     filter: ['==', ['get', 'class'], 'ocean'],
     paint: { 'fill-color': WATER_OCEAN_COLOR, 'fill-opacity': WATER_OPACITY },
   }, {
@@ -238,24 +284,27 @@ export function buildStyle(lang: LabelLanguage = 'latin', base: BaseMode = 'vect
     source: 'openmaptiles',
     'source-layer': 'water',
     metadata: { group: 'satellite' },
-    layout: { visibility: base === 'satellite' ? 'visible' : 'none' },
+    layout: { visibility: waterVisible ? 'visible' : 'none' },
     filter: ['!=', ['get', 'class'], 'ocean'],
     paint: { 'fill-color': WATER_OTHER_COLOR, 'fill-opacity': WATER_OPACITY },
   });
-  style.sources['satellite-imagery'] = activeMapTilerKey()
-    ? maptilerSourceSpec()
-    : {
-        type: 'raster',
-        tiles: [ESRI_IMAGERY],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
-      };
+  style.sources['satellite-imagery'] = satelliteSourceSpec();
+  // 卫星水面所需的 OpenFreeMap 矢量源（免 key；只被 water-ocean/water-other 引用）。
+  // 用固定快照的 tiles 模板而不是 url：TileJSON 会在每次样式加载时被请求（vector 模式
+  // 也会请求，网络失败就污染地图错误通道），且线上快照会漂移。水面层隐藏时 MapLibre
+  // 不会请求瓦片，因此 vector 模式完全不外联；卫星模式的 z14 以上由 MapLibre overzoom。
+  style.sources.openmaptiles = {
+    type: 'vector',
+    tiles: ['https://tiles.openfreemap.org/planet/20261025_080012_pt/{z}/{x}/{y}.pbf'],
+    minzoom: 0,
+    maxzoom: 14,
+    attribution: '© OpenStreetMap contributors · OpenMapTiles · OpenFreeMap',
+  };
 
   return style as unknown as StyleSpecification;
 }
 
-/** 标注层 id 列表（语言切换 / 配色切换都作用在这组；ref 徽章等 base 组 symbol 不在内） */
+/** 标注层 id 列表（语言切换 / 配色切换都作用在这组；路网箭头等 base 组 symbol 不在内） */
 export function labelLayerIds(style: StyleSpecification): string[] {
   return style.layers
     .filter((l: any) => l.metadata?.group === 'labels' && l.type === 'symbol')
@@ -267,7 +316,31 @@ export function labelTextColors(): Record<string, { color: string; halo: string 
   return LABEL_PAINT_DEFAULTS;
 }
 
-/** 航线层插入位置：第一个标注层之前（航线压路网、让标注） */
+/** 光照/地面特效层的插入锚点：最早的近景符号层（roads_oneway），让行星光照与夜路
+ *  压在道路/建筑之下、标注之上（与已验收候选的 near 语义一致）。 */
+export function lightingAnchorLayerId(style: StyleSpecification): string | undefined {
+  const ids = style.layers.map((l: any) => l.id);
+  for (const candidate of ['roads_oneway', 'buildings-3d']) {
+    if (ids.includes(candidate)) return candidate;
+  }
+  return style.layers.find((l: any) => l.type === 'symbol')?.id;
+}
+
+/** 航线层插入锚点：光照层与 buildings-3d 之后的第一批标注层之前。
+ *  旧实现用"第一个标注层"，在新样式里会落到行星光照层之下（整屏暗化会压住航线），
+ *  因此改为按层序取：max(光照锚点, buildings-3d) 之后的第一个 labels 层。 */
+export function routeAnchorLayerId(style: StyleSpecification): string | undefined {
+  const layers = style.layers as any[];
+  const ids = layers.map((l) => l.id);
+  const anchors = ['roads_oneway', 'buildings-3d'].map((id) => ids.indexOf(id)).filter((i) => i >= 0);
+  const floor = anchors.length ? Math.max(...anchors) : -1;
+  for (let i = floor + 1; i < layers.length; i++) {
+    if (layers[i].metadata?.group === 'labels') return layers[i].id;
+  }
+  return undefined;
+}
+
+/** 兼容旧调用：第一个 labels 层（不含光照/建筑层级判断）。 */
 export function firstLabelLayerId(style: StyleSpecification): string | undefined {
   return style.layers.find((l: any) => l.metadata?.group === 'labels')?.id;
 }

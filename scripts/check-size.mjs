@@ -9,15 +9,16 @@ import { gzipSync } from 'node:zlib';
 const assets = join(process.cwd(), 'dist', 'assets');
 
 // [文件名正则, 预算 KB, 口径, 说明]（构建产物带 8 位 hash 后缀）
+// 2026-10-27 主项目地图整合：旧 Apple 矢量底图的 NASA 绿毯（两张 webp）已退出运行时，
+// 对应预算规则一并移除；MapController 预算保持 320KB（当前 295KB，含 Flightline
+// 行星光照/夜路/样式/着色器）。这不是放宽预算，新增体积见 REVIEW-REQUEST.md。
 const RULES = [
   { re: /^index-.*\.js$/, maxKb: 120, gz: true, label: '首屏 JS（react + 应用 + 搜索壳）' },
   { re: /^index-.*\.css$/, maxKb: 10, gz: true, label: '首屏 CSS' },
-  { re: /^MapController-.*\.js$/, maxKb: 320, gz: true, label: 'maplibre 异步 chunk' },
+  { re: /^MapController-.*\.js$/, maxKb: 320, gz: true, label: 'maplibre + Flightline 异步 chunk' },
   { re: /^MapController-.*\.css$/, maxKb: 12, gz: true, label: 'maplibre 异步 CSS' },
   { re: /^airports-.*\.js$/, maxKb: 380, gz: true, label: '机场数据异步 chunk' },
   { re: /^tz-.*\.js$/, maxKb: 36, gz: true, label: 'tz-lookup 懒加载 chunk（时间线用到才拉取）' },
-  { re: /^global-lc-merc-[A-Za-z0-9_-]{8}\.webp$/, maxKb: 220, gz: false, label: '绿毯 SD（无损 webp）' },
-  { re: /^global-lc-merc-hd-[A-Za-z0-9_-]{8}\.webp$/, maxKb: 2300, gz: false, label: '绿毯 HD（无损 webp，缩放≥4 级才拉取）' },
 ];
 
 const files = readdirSync(assets);

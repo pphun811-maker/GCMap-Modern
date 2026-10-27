@@ -1,0 +1,35 @@
+{
+  "tool": "candidate tools/build-ice-support.mjs (derived data asset)",
+  "generatedAt": "2026-10-23T10:59:00.387Z",
+  "method": "Union of landcover.kind=glacier and landuse.kind=glacier polygons from world_z0_z7.pmtiles, rasterized into the snow climatology ±90 grid (row-major, north first) with even-odd scanline fill; the south polar cap beyond the tile source (-84.8°) is marked as ice-sheet domain.",
+  "output": {
+    "file": "assets/snow_support_v1.bin",
+    "width": 4096,
+    "height": 2048,
+    "bytes": 8388608,
+    "encoding": "u8, 0 or 255, row-major, row 0 = +90°, v = (90 - lat) / 180",
+    "sha256": "58dcc0479997f7076a08536440cb2d6436e0a3362f0919ddf64f95a1d72aef34",
+    "southCapLat": -84.8,
+    "supportPixels": 961786,
+    "supportPixelSharePercent": 11.465,
+    "supportCosineAreaSharePercent": 4.119,
+    "preview": "reports/raw/snow-support-preview.png",
+    "previewSha256": "ccbe593c7fe76d49870c03430972c3353ca01d0f55b988c74413079d1bfeb1e2"
+  },
+  "source": {
+    "file": "world_z0_z7.pmtiles (game content/web/maps; absolute path configured server-side)",
+    "bytes": 185278935,
+    "sha256": "24e111d5466fd0ba064a25e8af2309c996a0290886981278d567e2105fddba2e",
+    "zoom": 7
+  },
+  "featureCounts": {
+    "tilesRead": 16384,
+    "tilesWithGlacier": 4544,
+    "landcoverGlacier": 4187,
+    "landuseGlacier": 18595,
+    "rings": 35044,
+    "points": 1920825,
+    "filledRows": 35624
+  },
+  "scope": "Data support only. The shader still requires the snow climatology perennial signal; this mask only removes places the vector world says are not glacier/ice sheet."
+}
