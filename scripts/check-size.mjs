@@ -22,6 +22,14 @@ const RULES = [
 ];
 
 const files = readdirSync(assets);
+// Browser-only Pages resource reader and off-main-thread road baking are lazy chunks.
+for (const rule of [
+  { re: /^staticTiles-.*\.js$/, maxKb: 12, gz: true, label: 'Pages PMTiles reader' },
+  { re: /^staticRoadWorker-.*\.js$/, maxKb: 20, gz: true, label: 'Pages road worker' },
+  { re: /^staticRoadClient-.*\.js$/, maxKb: 2, gz: true, label: 'Pages road worker client' },
+]) {
+  if (files.some((file) => rule.re.test(file))) RULES.push(rule);
+}
 const kb = (n) => `${(n / 1024).toFixed(1)}KB`;
 
 let failed = false;

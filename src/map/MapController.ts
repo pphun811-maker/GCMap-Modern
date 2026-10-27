@@ -23,6 +23,7 @@ import {
   GLOBE_SKY, FLAT_SKY, lightingAnchorLayerId, type BaseMode, type LabelLanguage,
 } from './styleFactory';
 import { ensureProtocol } from './oceanTint';
+import { ensureStaticMapProtocol } from './flightline/staticProtocol';
 import { satelliteTileSize } from './satelliteLod';
 import { mountSpaceScene, type SpaceScene } from './spaceScene';
 import { PlanetLayer } from './flightline/planetLayer';
@@ -75,8 +76,8 @@ export interface RouteEntry {
   ofp?: SbfPlanMeta;
 }
 
-// 航线标签文字颜色跟随航线色；描边恒为白晕（矢量/卫星一致），保证两种底图上都可读
-const ROUTE_LABEL_HALO = '#FFFFFF';
+// 航线标签文字颜色跟随航线色；矢量/卫星均使用 1px 黑色描边。
+const ROUTE_LABEL_HALO = '#000000';
 
 // 视野适配统一留白（左侧给面板留位）
 const FIT_PAD = { top: 110, bottom: 130, left: 460, right: 150 };
@@ -161,6 +162,7 @@ export class MapController {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gsat:// 瓦片会请求未注册协议；
     // getter 是动态的：用户运行时填入/更换 key 后无需重注册
     ensureProtocol(() => activeMapTilerKey());
+    ensureStaticMapProtocol();
     if (import.meta.env.DEV && container.clientHeight < 200) {
       // 布局塌陷守卫：.map-root 若被 maplibre 自带 CSS 翻盘（.maplibregl-map{position:relative}）
       // 会塌成 0 高，地图只剩 300px 默认条、页面"白屏"——DOM 探针全绿，只有像素能发现
@@ -433,15 +435,14 @@ export class MapController {
       const visible = g === targetGroup;
       this.map.setLayoutProperty(l.id, 'visibility', visible ? 'visible' : 'none');
     }
-    // 标注：语言显隐 + 底图模式配色
-    const sat = this.baseMode === 'satellite';
+    // 标注：语言显隐 + 白字黑边；底图切换后继续保持。
     const defaults = labelTextColors();
     const style = this.map.getStyle() as StyleSpecification;
     for (const id of labelLayerIds(style)) {
       try {
         this.map.setLayoutProperty(id, 'visibility', this.labelsVisible ? 'visible' : 'none');
-        this.map.setPaintProperty(id, 'text-color', sat ? '#FFFFFF' : (defaults[id]?.color ?? '#000000'));
-        this.map.setPaintProperty(id, 'text-halo-color', sat ? 'rgba(0,0,0,0.55)' : (defaults[id]?.halo ?? '#FFFFFF'));
+        this.map.setPaintProperty(id, 'text-color', defaults[id]?.color ?? '#FFFFFF');
+        this.map.setPaintProperty(id, 'text-halo-color', defaults[id]?.halo ?? '#000000');
       } catch {
         /* 图层可能尚未就绪，忽略 */
       }
@@ -583,7 +584,7 @@ export class MapController {
     this.lang = lang;
     const style = this.map.getStyle() as StyleSpecification | undefined;
     if (!style?.layers) return; // 样式未加载完成：初始语言已在构造时内置，后续切换在 ready 后调用
-    const expr = nameExpr(lang); // 与 buildStyle 共用同一表达式（含 name_en 截断守卫）
+    const expr = nameExpr(lang); // 与 buildStyle 共用译名策略，不回退当地语言。
     for (const id of labelLayerIds(style)) {
       try {
         this.map.setLayoutProperty(id, 'text-field', expr as any);
@@ -693,9 +694,8 @@ export class MapController {
           paint: {
             'text-color': e.color,
             'text-halo-color': ROUTE_LABEL_HALO,
-            // 描边细化过一轮：1.8 + 0.4 模糊在 11px 字上显得很厚（2026-10-08 用户要求打薄）
-            'text-halo-width': 1.1,
-            'text-halo-blur': 0.25,
+            'text-halo-width': 1,
+            'text-halo-blur': 0,
             // 生长动画期间标签先隐，完成后淡入（routeAnim.LABEL_FADE_MS）
             'text-opacity': willGrow ? 0 : 1,
           },

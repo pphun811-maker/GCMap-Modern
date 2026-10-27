@@ -1,0 +1,21 @@
+{
+  "name": "road_density_v1",
+  "purpose": "Settlement light (settlement_lights_v1 red x alpha) for the night road pass.",
+  "source": "settlement_lights_v1.png (game content/web/maps; absolute path configured server-side)",
+  "sourceBytes": 3614253,
+  "sourceSha256": "9dc912c6566fcd397a73798e1929894505d1a4dc5dad687018a8c2cca98ecad7",
+  "sourceSize": [
+    4096,
+    2048
+  ],
+  "output": {
+    "width": 4096,
+    "height": 2048,
+    "format": "R8",
+    "bytes": 8388608
+  },
+  "outputSha256": "9667e8e98bc1f5a5013ee5be4a60127f47769a5a296691ab05eb0024b380fb39",
+  "formula": "round(red * alpha / 255)",
+  "mapping": "u = lon / 360 + 0.5 (repeat), v = (85deg - lat) / 170deg (clamp)",
+  "note": "Derived data asset; the game atlas is read-only and is not copied into the candidate."
+}

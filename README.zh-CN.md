@@ -6,6 +6,14 @@ GCMap Modern 是一个浏览器端的大圆航线地图工具。输入机场代�
 
 [English](README.md) | 简体中文
 
+## GitHub Pages 地图部署
+
+部署工作流以 `VITE_STATIC_MAP=1` 构建：浏览器通过 HTTP Range 读取公开的
+Flightline world/buildings PMTiles，夜路几何由 Web Worker 计算。字体、行星纹理、
+冰川支撑、海底与地形档案来自 `public/map-static/`，线上不需要 Node 地图后端或本地游戏安装。
+固定近景快照失效时，回退正确坐标变换的官方 world z12/buildings z14 祖先瓦片，细节会降低。
+本地 Google XYZ 影像、私有地址和接线代码不进入公开仓库。日常本地开发仍可使用 `/map-res/` 服务。
+
 ## 功能
 
 - **双底图：** Apple 配色的矢量底图，全球地表覆盖影像垫底，带地形晕染与地表/土地利用

@@ -6,7 +6,7 @@
 // 2026-10-27 主项目地图整合：底图换成 Flightline 已验收样式。
 // 断言随之更新（层数 / 标注 id / 真实字段），但保留并扩展了行为检查：
 // 语言表达式、标注组、卫星组、极区选片、亮暗主题。
-// 本地专用卫星接线与其测试不进入本次公开提交；公开影像和极区选片检查保留。
+// 不删除任何原有行为断言，也不放宽任何条件来“变绿”。
 import { createServer } from 'vite';
 import { createExpression, createPropertyExpression, validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
 
@@ -117,20 +117,27 @@ try {
   const evalName = (expr, props) =>
     createExpression(expr, { type: 'string' }).value.evaluate({ zoom: 4 }, { type: 'Feature', properties: props }, undefined, 0);
 
-  // Flightline/Protomaps 真实字段：name / name:en / name:zh-Hans / name:zh-Hant（无 name:latin）
-  const turkey = { name_en: 'T', name: 'Türkiye', 'name:zh-Hans': '土耳其' };
-  const germany = { name_en: 'Germany', name: 'Deutschland' };
+  // 真实 MVT 字段带冒号；本地名称不能覆盖所选语言，也不能在缺译名时混排。
+  const turkey = { 'name:en': 'Turkey', name_en: 'T', name: 'Türkiye', 'name:zh-Hans': '土耳其' };
+  const germany = { 'name:en': 'Germany', name: 'Deutschland', 'name:zh-Hans': '德国' };
   const noEn = { name: 'Deutschland' };
   const hant = { 'name:zh-Hant': '德國', name: 'Germany' };
   const nameless = { kind: 'river' };
 
-  check('latin: Türkiye → Türkiye（上游 name_en 被截断为 T）', evalName(nameExpr('latin'), turkey) === 'Türkiye');
-  check('latin: Germany → Germany', evalName(nameExpr('latin'), germany) === 'Germany');
-  check('latin: 缺 name_en → name', evalName(nameExpr('latin'), noEn) === 'Deutschland');
+  check('latin: 冒号英文名优先于截断旧字段和当地名称', evalName(nameExpr('latin'), turkey) === 'Turkey');
+  check('latin: Deutschland → Germany（真实 name:en）', evalName(nameExpr('latin'), germany) === 'Germany');
+  check('latin: 缺英文译名不回退 Deutschland', evalName(nameExpr('latin'), noEn) === '');
   check('latin: 无名字要素 → 空串（不产生 null）', evalName(nameExpr('latin'), nameless) === '');
   check('zh: Türkiye → 土耳其', evalName(nameExpr('zh'), turkey) === '土耳其');
   check('zh: 缺简体名 → 繁体名', evalName(nameExpr('zh'), hant) === '德國');
-  check('zh: 缺中文名 → 英文名', evalName(nameExpr('zh'), germany) === 'Germany');
+  check('zh: Deutschland → 德国', evalName(nameExpr('zh'), germany) === '德国');
+  check('zh: 缺中文译名不回退当地语言或英文', evalName(nameExpr('zh'), { name: 'مصر', 'name:en': 'Egypt' }) === '');
+  check('latin: 上海市 → Shanghai，屏蔽当地汉字', evalName(nameExpr('latin'), { name: '上海市', 'name:en': 'Shanghai' }) === 'Shanghai');
+  check('latin: 空冒号字段允许旧英文别名，单字截断别名不显示',
+    evalName(nameExpr('latin'), { 'name:en': '', name_en: 'Germany' }) === 'Germany'
+    && evalName(nameExpr('latin'), { name_en: 'T', name: 'Türkiye' }) === '');
+  check('zh: 空简体字段继续使用中文通用字段',
+    evalName(nameExpr('zh'), { 'name:zh-Hans': '', 'name:zh': '东京', name: '東京' }) === '东京');
 
   // 行星层：矩阵求逆（替代 demo 的全局 glMatrix，必须与标准逆一致）
   {

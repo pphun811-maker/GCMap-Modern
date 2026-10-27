@@ -58,6 +58,18 @@ English | [简体中文](README.zh-CN.md)
 - **URL deep links:** Routes, language, basemap, projection, unit, label visibility, and theme
   are all encoded in the URL and restored on load.
 
+## GitHub Pages map deployment
+
+The Pages workflow builds with `VITE_STATIC_MAP=1`. The browser reads the public
+Flightline world/buildings PMTiles archives with HTTP Range requests, and computes
+night-road geometry in a Web Worker. Fonts, planet textures, glacier support,
+bathymetry and terrain archives are served from `public/map-static/`.
+No Node map backend or local installation is needed on the published site.
+The fixed high-detail snapshot may be unavailable; requests then use correctly
+transformed official world z12/buildings z14 ancestor tiles with lower detail.
+Local Google XYZ imagery, addresses and integration code are excluded from the
+published repository. Local development can still use the Node `/map-res/` service.
+
 ## Getting started
 
 Requirements: Node.js 20.19+ or 22.12+ (per Vite 8) and npm.

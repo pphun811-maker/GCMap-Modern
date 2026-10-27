@@ -17,6 +17,7 @@
 
 import roadGlowRaw from './roadGlowStyle.json?raw';
 import { mapResourceUrl } from '../styleFactory';
+import { fetchMapResource } from './resourceMode';
 
 const NIGHT_CLASSES = ['highway', 'major_road', 'medium_road', 'minor_road'];
 const MID_CLASSES = ['highway', 'major_road'];
@@ -663,7 +664,7 @@ export class NightRoads {
       const endpoint = mapResourceUrl('roads.geojson');
       const responses = await Promise.all(requested.map(async ([w, s, e, n]) => {
         const url = `${endpoint}?z=${z.toFixed(2)}&w=${w.toFixed(4)}&s=${s.toFixed(4)}&e=${e.toFixed(4)}&n=${n.toFixed(4)}`;
-        const response = await fetch(url, { signal: this.abort!.signal });
+        const response = await fetchMapResource(url, this.abort!.signal);
         if (!response.ok) throw Error('roads ' + response.status);
         try {
           const headers = response.headers;

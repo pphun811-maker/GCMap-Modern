@@ -15,6 +15,7 @@
 import type { StyleSpecification } from 'maplibre-gl';
 import darkRaw from './flightline/styles/dark.json?raw';
 import lightRaw from './flightline/styles/light.json?raw';
+import { STATIC_MAP, staticResourceUrl } from './flightline/resourceMode';
 
 export type LabelLanguage = 'latin' | 'zh';
 export type BaseMode = 'vector' | 'satellite';
@@ -24,6 +25,7 @@ export type BaseMode = 'vector' | 'satellite';
 const PAGE_HREF = typeof window !== 'undefined' ? window.location.href : 'http://localhost/';
 
 export function mapResourceUrl(pathname: string): string {
+  if (STATIC_MAP) return staticResourceUrl(pathname.replace(/^\/+/, ''));
   const base = import.meta.env.BASE_URL || '/';
   const url = new URL(`${base}map-res/${pathname.replace(/^\/+/, '')}`, PAGE_HREF).href;
   return url.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
@@ -103,9 +105,9 @@ const WATER_OCEAN_COLOR = '#233466';
 const WATER_OTHER_COLOR = '#29407a';
 const WATER_OPACITY = 0.64;
 
-// 卫星模式的标注配色（白字 + 半透明深晕；白 halo 在影像上是突兀白边，深字又看不清）
-const SAT_TEXT_COLOR = '#FFFFFF';
-const SAT_TEXT_HALO = 'rgba(0,0,0,0.55)';
+// 所有底图和主题统一使用白字黑边，避免深色地名在地表材质上失去对比度。
+const PLACE_TEXT_COLOR = '#FFFFFF';
+const PLACE_TEXT_HALO = '#000000';
 
 // 3D 地球的 sky：与 demo `setup()` 完全一致——全透明、atmosphere-blend 0。
 // demo 的太空/大气只由 PlanetLayer 的 halo/haze 绘制；MapLibre 自带 sky/atmosphere
@@ -125,29 +127,22 @@ export const FLAT_SKY = {
   'atmosphere-blend': 0,
 };
 
-/** 名字表达式：Flightline 瓦片只带 name / name:en / name:zh-Hans / name:zh-Hant（实测
- *  Protomaps Basemap 4.14/4.15 schema，无 name:latin）。守卫保留：上游把 Türkiye 的
- *  name_en 截断成单字符 "T"，直接 coalesce(name_en, name) 会让英文模式只剩一个字母。
- *  ⚠ `has` 守卫必须留：name_en 缺失时 length 会拿到 null 而报错，all 短路后再取长度
- *  才不会污染错误通道。 */
-function latinName(): any {
-  return [
-    'case',
-    ['all', ['has', 'name_en'], ['>', ['length', ['to-string', ['get', 'name_en']]], 1]],
-    ['get', 'name_en'],
-    ['get', 'name'],
-  ];
+/** 空字段也视为缺失，继续查找同一语言的其它字段。
+ *  先转字符串，避免字段不存在时对 null 求 length。 */
+function translatedName(field: string, fallback: any, minLength = 1): any {
+  const value = ['to-string', ['get', field]];
+  return ['case', ['>=', ['length', value], minLength], value, fallback];
 }
 
-/** 地名取值表达式：zh 优先简体 → 繁体；latin 用英文名。外层 to-string 包一层：
- *  无 name 的要素（部分无名 waterway）求值结果保持空串而不是 null。 */
+/** Protomaps 的语言字段用冒号：name:en / name:zh-Hans，而 name 是当地语言。
+ *  只使用所选语言的译名；缺译名时留空，避免回退 name 后重新混入各国语言。
+ *  兼容旧 name_en，但拒绝历史上被截断为单字符的值。 */
 export function nameExpr(lang: LabelLanguage): any {
-  if (lang === 'zh') {
-    return ['to-string', ['coalesce',
-      ['get', 'name:zh-Hans'], ['get', 'name:zh-Hant'], latinName(), ['get', 'name'],
-    ]];
-  }
-  return ['to-string', ['coalesce', latinName(), ['get', 'name']]];
+  const fields = lang === 'zh'
+    ? ['name:zh-Hans', 'name:zh', 'name:zh-Hant', 'name_zh']
+    : ['name:en', 'name_en'];
+  return fields.reduceRight<any>((fallback, field) =>
+    translatedName(field, fallback, field === 'name_en' ? 2 : 1), '');
 }
 
 /** text-field 是否取自 name 类字段（路网箭头 / 纯图标层不算） */
@@ -176,7 +171,6 @@ export function maptilerSourceSpec(): any {
   };
 }
 
-/** 卫星源：MapTiler gsat；无 key 回退 Esri。 */
 export function satelliteSourceSpec(): any {
   if (activeMapTilerKey()) return maptilerSourceSpec();
   return {
@@ -243,14 +237,14 @@ export function buildStyle(
     layer.layout = layer.layout ?? {};
     layer.paint = layer.paint ?? {};
     layer.layout['text-field'] = name;
+    layer.paint['text-color'] = PLACE_TEXT_COLOR;
+    layer.paint['text-halo-color'] = PLACE_TEXT_HALO;
+    layer.paint['text-halo-width'] = 1;
+    layer.paint['text-halo-blur'] = 0;
     LABEL_PAINT_DEFAULTS[layer.id] = {
-      color: layer.paint['text-color'] ?? '#000000',
-      halo: layer.paint['text-halo-color'] ?? '#000000',
+      color: PLACE_TEXT_COLOR,
+      halo: PLACE_TEXT_HALO,
     };
-    if (base === 'satellite') {
-      layer.paint['text-color'] = SAT_TEXT_COLOR;
-      layer.paint['text-halo-color'] = SAT_TEXT_HALO;
-    }
   }
 
   // 卫星影像：插在 background 之后（与 base 组互斥，?base=satellite 直开时内置可见避免闪白）。
