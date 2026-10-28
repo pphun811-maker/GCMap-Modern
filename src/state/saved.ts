@@ -15,6 +15,8 @@ import { decodePolyline, encodePolyline, encodeSbfMeta, parseSbfMeta } from '../
 export const DRAFT_KEY = 'gcmap.draft';
 export const FAVORITES_KEY = 'gcmap.favorites';
 export const JOURNAL_KEY = 'gcmap.journal';
+/** 菜单 UTC 显示时区偏移（整点小时；设备本地偏好，不进 URL/草稿） */
+export const UTC_OFFSET_KEY = 'gcmap.utcOffset';
 
 // 全局唯一 id 源（URL 解析 / 草稿与收藏恢复 / App 新建共用，避免跨模块撞号）
 let uid = 0;
@@ -34,6 +36,18 @@ function lsSet(key: string, val: string): void {
   } catch {
     /* 隐私模式：本会话内存状态仍有效 */
   }
+}
+
+/** 读取本地保存的 UTC 显示时区偏移（整点小时）；无记录/坏值返回 null，由调用方归一 */
+export function readUtcOffset(): number | null {
+  const raw = lsGet(UTC_OFFSET_KEY);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function writeUtcOffset(offset: number): void {
+  lsSet(UTC_OFFSET_KEY, String(offset));
 }
 
 // ---- 航线快照编解码（草稿与收藏共用的最小持久化形态） ----

@@ -8,6 +8,9 @@
 export const UTC_HOURS_MAX = 24;
 /** 滑杆步长（小时）：0.1 h = 6 分钟 */
 export const UTC_HOURS_STEP = 0.1;
+/** 显示时区偏移范围（整点小时，UTC−12…UTC+14） */
+export const UTC_OFFSET_MIN = -12;
+export const UTC_OFFSET_MAX = 14;
 
 /**
  * 归一化手动 UTC 时刻：拒绝 NaN/空串/越界值（返回 null，调用方保持原值）。
@@ -34,6 +37,62 @@ export function formatUtcHours(hours: number): string {
   const hh = Math.floor(total / 60);
   const mm = total % 60;
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+/**
+ * 解析用户直接输入的时刻文本（菜单里点时刻后的输入框）。
+ * 接受 "14"、"14:30"、"9:05"、"1430"、"930"、"14.5"（小数小时）；越界/乱码返回 null，
+ * 由调用方保持原值。24:00 与 normalizeUtcHours 同语义归一为 0。
+ */
+export function parseClockInput(text: string): number | null {
+  const s = String(text ?? '').trim();
+  if (!s) return null;
+  let hours: number;
+  if (/^\d{1,2}\s*[:：]\s*\d{1,2}$/.test(s)) {
+    const [hh, mm] = s.split(/[:：]/);
+    const h = Number(hh);
+    const m = Number(mm);
+    if (!Number.isInteger(h) || !Number.isInteger(m) || m > 59) return null;
+    hours = h + m / 60;
+  } else if (/^\d{3,4}$/.test(s)) {
+    const h = Number(s.slice(0, s.length - 2));
+    const m = Number(s.slice(-2));
+    if (m > 59) return null;
+    hours = h + m / 60;
+  } else if (/^\d{1,2}(\.\d+)?$/.test(s)) {
+    hours = Number(s);
+  } else {
+    return null;
+  }
+  if (!Number.isFinite(hours) || hours < 0 || hours > UTC_HOURS_MAX) return null;
+  return hours === UTC_HOURS_MAX ? 0 : hours;
+}
+
+/** 显示时区偏移归一化：整点小时，越界/坏值回 0（UTC） */
+export function normalizeUtcOffset(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 0;
+  const h = Math.round(n);
+  if (h < UTC_OFFSET_MIN || h > UTC_OFFSET_MAX) return 0;
+  return h;
+}
+
+/** 时区后缀文本：0 → "UTC"；东八区 → "UTC+8"；西五区 → "UTC-5" */
+export function utcOffsetLabel(offset: number): string {
+  const o = normalizeUtcOffset(offset);
+  if (o === 0) return 'UTC';
+  return `UTC${o > 0 ? '+' : '-'}${Math.abs(o)}`;
+}
+
+/** UTC 小时 → 指定时区的本地小时（0–24 循环） */
+export function toLocalHours(utcHours: number, offset: number): number {
+  const shifted = (utcHours + normalizeUtcOffset(offset)) % UTC_HOURS_MAX;
+  return shifted < 0 ? shifted + UTC_HOURS_MAX : shifted;
+}
+
+/** 指定时区的本地小时 → UTC 小时（0–24 循环）；toLocalHours 的逆运算 */
+export function toUtcHours(localHours: number, offset: number): number {
+  return toLocalHours(localHours, -normalizeUtcOffset(offset));
 }
 
 /**

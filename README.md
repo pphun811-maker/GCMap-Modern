@@ -52,9 +52,10 @@ English | [简体中文](README.zh-CN.md)
   code or by name.
 - **Two input modes:** A tag-flow input for interactive composition, and a raw-text mode that
   accepts several routes pasted at once.
-- **Map options menu:** Basemap, 3D globe, 3D terrain, view reset, place labels, and language
-  live behind a single button in the top-right corner; saved routes sit behind the bookmark
-  button next to it.
+- **Map options menu:** Basemap, 3D globe, 3D terrain, day & night plus UTC time, view reset,
+  place labels, and language live behind a single button in the top-right corner; saved routes
+  sit behind the bookmark button next to it. Click the UTC clock to type a time, click its
+  suffix to change the display time zone, or sync back to the real clock in one click.
 - **URL deep links:** Routes, language, basemap, projection, unit, label visibility, and theme
   are all encoded in the URL and restored on load.
 

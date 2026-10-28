@@ -1338,7 +1338,7 @@ html.dark .tl-input {
   color: var(--text);
 }
 
-/* ---------- 菜单内：昼夜光照时刻（demo cycle 语义；UTC HH:mm + 0–24 h 滑杆） ---------- */
+/* ---------- 菜单内：昼夜光照时刻（点时刻直接输入 / 点时区后缀切换显示时区 / 同步到现在） ---------- */
 .menu-time {
   padding: 4px 0 6px;
   border-bottom: 1px solid var(--hairline);
@@ -1347,18 +1347,150 @@ html.dark .tl-input {
 .menu-time-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
   min-height: 30px;
 }
 
+/* 标题靠左，时刻与时区/同步钮成组靠右（output 保持 menu-time-head 的直接子元素） */
+.menu-time-head .menu-label {
+  margin-right: auto;
+}
+
 .menu-time-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
+/* 时刻/时区后缀：静止时与纯文本一致，悬停才浮出底色提示可点 */
+.menu-time-clock,
+.menu-time-tz {
+  margin: 0;
+  padding: 2px 3px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: inherit;
+}
+
+button.menu-time-clock,
+button.menu-time-tz {
+  cursor: pointer;
+}
+
+button.menu-time-clock:hover:not(:disabled),
+button.menu-time-tz:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--fill-soft);
+}
+
+button.menu-time-clock:disabled,
+button.menu-time-tz:disabled {
+  cursor: default;
+}
+
+/* 时区浮层（portal 到 body + fixed）：与菜单同玻璃材质。
+   原生 select 在深色主题下是白底白字，看不清选项，故自绘 */
+.menu-tz-pop {
+  position: fixed;
+  z-index: 2400;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  border-radius: 11px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+.menu-tz-opt {
+  flex: none;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-tz-opt:hover,
+.menu-tz-opt:focus-visible {
+  background: var(--fill-soft);
+  color: var(--text-strong);
+  outline: none;
+}
+
+.menu-tz-opt.on {
+  background: var(--fill);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.menu-time-editing {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.menu-time-input {
+  width: 54px;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--focus-ring);
+  border-radius: 5px;
+  background: var(--field-focus-bg);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+  text-align: center;
+  outline: none;
+}
+
+/* 同步到现在：文字旁的小图标钮，已是实时态时置灰 */
+.menu-time-now {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.menu-time-now:hover:not(:disabled) {
+  background: var(--fill-soft);
+  color: var(--text);
+}
+
+.menu-time-now:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* 滑杆恢复原宽（与正文同宽，不做出血） */
 .menu-time input[type='range'] {
+  display: block;
   width: 100%;
   height: 4px;
   margin: 2px 0 4px;
@@ -1576,12 +1708,12 @@ html.dark .tl-input {
 }.brand-name {
   font-size: 13px;
   font-weight: 700;
-  color: #33332e;
+  color: #ffffff;
   letter-spacing: 0.02em;
-  /* 白边：paint-order 让描边画在字面之下，笔画不被描边吃掉（不支持时只是笔画略细）；2px=两侧各 1px */
-  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.92);
+  /* 白字 + 1px 纯黑描边（与地图地名层同一套可读性口径）；无阴影/羽化；
+     paint-order 让描边画在字面之下，笔画不被描边吃掉 */
+  -webkit-text-stroke: 1px #000000;
   paint-order: stroke fill;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
 }
 
 /* ---------- 机场 Pin（demo 外观：小圆点 + 细描边 + 机场代码；真实坐标/点击/裁剪不变） ---------- */

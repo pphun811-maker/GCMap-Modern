@@ -207,6 +207,32 @@ try {
       dn.normalizeUtcHours('13.5') === 13.5 && dn.normalizeUtcHours(24) === 0);
     check('昼夜：HH:mm 显示（含 0.1h=6min）',
       dn.formatUtcHours(13.5) === '13:30' && dn.formatUtcHours(0.1) === '00:06' && dn.formatUtcHours(24) === '00:00');
+    check('昼夜：直接输入时刻（HH:mm/HHmm/小数小时/24:00 归一）',
+      dn.parseClockInput('14:30') === 14.5
+      && dn.parseClockInput('1430') === 14.5
+      && dn.parseClockInput('930') === 9.5
+      && dn.parseClockInput('7') === 7
+      && dn.parseClockInput('14.5') === 14.5
+      && dn.parseClockInput('24:00') === 0
+      && dn.parseClockInput(' 08:05 ') === 8 + 5 / 60);
+    check('昼夜：非法输入返回 null（保持原值，不改太阳）',
+      dn.parseClockInput('') === null && dn.parseClockInput('25:00') === null
+      && dn.parseClockInput('12:60') === null && dn.parseClockInput('abc') === null
+      && dn.parseClockInput('12345') === null);
+    check('昼夜：时区后缀文本', dn.utcOffsetLabel(0) === 'UTC'
+      && dn.utcOffsetLabel(8) === 'UTC+8' && dn.utcOffsetLabel(-5) === 'UTC-5');
+    check('昼夜：时区换算（含跨日）与往返', (() => {
+      const east = dn.toLocalHours(12, 8); // 12 UTC → 20:00 UTC+8
+      const west = dn.toLocalHours(0, -5); // 0 UTC → 19:00 前一日 UTC-5
+      return east === 20 && west === 19
+        && dn.toUtcHours(east, 8) === 12
+        && dn.toUtcHours(20, 8) === 12
+        && dn.toUtcHours(19, -5) === 0;
+    })());
+    check('昼夜：时区偏移归一（越界/坏值回 UTC）',
+      dn.normalizeUtcOffset(-12) === -12 && dn.normalizeUtcOffset(14) === 14
+      && dn.normalizeUtcOffset('8') === 8 && dn.normalizeUtcOffset(8.4) === 8
+      && dn.normalizeUtcOffset(15) === 0 && dn.normalizeUtcOffset(NaN) === 0);
     const off = dn.dayNightUniforms(false);
     const on = dn.dayNightUniforms(true);
     check('昼夜：关闭时 u_cycle/u_lights 归零，开启恢复',
