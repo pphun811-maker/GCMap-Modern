@@ -3,6 +3,7 @@ import type { FavoriteEntry } from '../state/saved';
 import type { Strings } from '../i18n/strings';
 
 interface Props {
+  docked?: boolean;
   favorites: FavoriteEntry[];
   /** 当前有航线才显示保存行 */
   hasRoutes: boolean;
@@ -14,13 +15,13 @@ interface Props {
 
 /** 右上角航线收藏：书签按钮拉起面板，命名保存当前航线组 / 点击恢复（替换当前航线）/ 删除。
  *  与地图选项菜单同材质同交互（点外部 / Esc 关闭） */
-export function FavoritesMenu({ favorites, hasRoutes, onSave, onApply, onDelete, t }: Props) {
+export function FavoritesMenu({ favorites, hasRoutes, onSave, onApply, onDelete, t, docked = false }: Props) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || docked) return;
     const onDown = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
@@ -33,7 +34,7 @@ export function FavoritesMenu({ favorites, hasRoutes, onSave, onApply, onDelete,
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, docked]);
 
   const save = () => {
     onSave(name);
@@ -41,8 +42,8 @@ export function FavoritesMenu({ favorites, hasRoutes, onSave, onApply, onDelete,
   };
 
   return (
-    <div className="map-menu fav-menu" ref={rootRef}>
-      <button
+    <div className={docked ? 'pro-docked-favorites' : 'map-menu fav-menu'} ref={rootRef}>
+      {!docked && <button
         type="button"
         className={`menu-btn${open ? ' active' : ''}`}
         aria-expanded={open}
@@ -60,8 +61,8 @@ export function FavoritesMenu({ favorites, hasRoutes, onSave, onApply, onDelete,
             strokeLinejoin="round"
           />
         </svg>
-      </button>
-      {open && (
+      </button>}
+      {(open || docked) && (
         <div className="card menu-panel fav-panel" aria-label={t.favRow}>
           {hasRoutes && (
             <div className="fav-save">

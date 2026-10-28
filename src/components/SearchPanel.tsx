@@ -206,6 +206,21 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
     onAddMany(groups);
   };
 
+  const addFromButton = () => {
+    if (rawMode) { commitRaw(); return; }
+    const liveText = inputRef.current?.value ?? text;
+    const codes = [...tags.map(a => a.iata || a.icao), ...liveText.split(SEG_SPLIT).map(c => c.trim()).filter(Boolean)];
+    const airports = resolveAll(codes);
+    if (!airports) return;
+    if (airports.length < 2) { setError(t.needTwo); return; }
+    onAdd(airports);
+    setTags([]);
+    setText('');
+    setError(null);
+    setOpen(false);
+    inputRef.current?.focus();
+  };
+
   const rawKeyDown = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter') {
@@ -287,6 +302,7 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
             />
           </div>
         )}
+        <div className="pro-search-tools">
         <button
           type="button"
           className={`raw-toggle${rawMode ? ' active' : ''}`}
@@ -321,8 +337,11 @@ export function SearchPanel({ selected, onAdd, onAddMany, onUpdateSelected, sbf,
                 strokeLinejoin="round"
               />
             </svg>
+            <span>SimBrief</span>
           </button>
         )}
+        <button type="button" className="pro-create-route" aria-label={t.addRoute} title={t.addRoute} onClick={addFromButton}>＋</button>
+        </div>
       </div>
 
       {suggestions.length > 0 && (

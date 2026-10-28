@@ -14,6 +14,9 @@ import { readUtcOffset, writeUtcOffset } from '../state/saved';
 import type { Lang, Strings } from '../i18n/strings';
 
 interface Props {
+  docked?: boolean;
+  legacyUi?: boolean;
+  onToggleUi?: () => void;
   base: BaseMode;
   onBase: (m: BaseMode) => void;
   globeOn: boolean;
@@ -33,8 +36,6 @@ interface Props {
   onLang: (l: Lang) => void;
   labelsOn: boolean;
   onLabels: (v: boolean) => void;
-  dark: boolean;
-  onDark: (v: boolean) => void;
   /** 装饰小飞机巡航开关（默认关） */
   planeOn: boolean;
   onPlane: (v: boolean) => void;
@@ -61,8 +62,8 @@ const TZ_POP_MAX_H = 236;
 
 /** 右上角唯一入口：一个按钮拉起菜单，收拢底图/3D/回正/地名/语言/深色模式全部控件 */
 export function TopRightMenu({
-  base, onBase, globeOn, onGlobe, terrainOn, onTerrain, cycleOn, onCycle, utcHours, onUtc, onReset, lang, onLang, labelsOn, onLabels, dark, onDark, planeOn, onPlane, t,
-  keyEditable, hasSatKey, onSatKey,
+  base, onBase, globeOn, onGlobe, terrainOn, onTerrain, cycleOn, onCycle, utcHours, onUtc, onReset, lang, onLang, labelsOn, onLabels, planeOn, onPlane, t,
+  keyEditable, hasSatKey, onSatKey, docked = false, legacyUi = false, onToggleUi,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -210,7 +211,7 @@ export function TopRightMenu({
 
   // 点外部 / Esc 关闭
   useEffect(() => {
-    if (!open) return;
+    if (!open || docked) return;
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node;
       if (rootRef.current?.contains(target)) return;
@@ -227,7 +228,7 @@ export function TopRightMenu({
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, docked]);
 
   // 回车提交：先抓一张小瓦片验证 key，通过才保存（保存后输入框与注册链接一起消失）
   const submitKey = async () => {
@@ -256,12 +257,12 @@ export function TopRightMenu({
   };
 
   return (
-    <div className="map-menu" ref={rootRef}>
+    <div className={`map-menu${docked ? ' pro-docked-settings' : ''}`} ref={rootRef}>
       <button
         type="button"
         className={`menu-btn${open ? ' active' : ''}`}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup={docked ? undefined : 'menu'}
         aria-label={t.menu}
         title={t.menu}
         onClick={() => setOpen((o) => !o)}
@@ -272,6 +273,7 @@ export function TopRightMenu({
           <circle cx="6.5" cy="12.5" r="2.5" fill="currentColor" />
           <circle cx="13.5" cy="7.5" r="2.5" fill="currentColor" />
         </svg>
+        {docked && <><span>{t.menu}</span><span className="pro-settings-chevron" aria-hidden="true">{open ? '−' : '+'}</span></>}
       </button>
       {open && (
         <div className="card menu-panel" aria-label={t.menu}>
@@ -529,17 +531,6 @@ export function TopRightMenu({
             </div>
           </div>
           <div className="menu-row">
-            <span className="menu-label">{t.darkMode}</span>
-            <button
-              type="button"
-              className={`switch${dark ? ' on' : ''}`}
-              role="switch"
-              aria-checked={dark}
-              aria-label={t.darkMode}
-              onClick={() => onDark(!dark)}
-            />
-          </div>
-          <div className="menu-row">
             <span className="menu-label">{t.planeRow}</span>
             <button
               type="button"
@@ -551,6 +542,7 @@ export function TopRightMenu({
               onClick={() => onPlane(!planeOn)}
             />
           </div>
+          {onToggleUi && <div className="menu-ui-switch"><button type="button" className="sb-mini" onClick={() => { setOpen(false); onToggleUi(); }}>{lang === 'zh' ? (legacyUi ? '切换到 Pro UI' : '切换回原 UI') : (legacyUi ? 'Switch to Pro UI' : 'Switch to original UI')}</button></div>}
         </div>
       )}
       {open && tzOpen && tzPos &&

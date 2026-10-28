@@ -146,6 +146,13 @@ export function RouteSummary({ legs, route, units, onUnits, lang, t, onRecord }:
 
   return (
     <div className="card summary-card">
+      <div className="pro-route-intro">
+        <div className="pro-route-title">{route?.airports.map(a => a.iata || a.icao).join(' → ')}</div>
+      </div>
+      <div className="pro-route-metrics">
+        <div><span>{t.total}</span><strong>{fmt(totalKm)}<small>{UNIT_LABEL[units]}</small></strong></div>
+        <div><span>{t.flightTime} {!ofp && <em>{lang === 'zh' ? '估算' : 'EST'}</em>}</span><strong className="pro-duration">{t.duration(totalMin)}</strong></div>
+      </div>
       <div className="summary-head">
         <span className="summary-title">
           {legs.length > 1 ? t.stops(legs.length) : t.direct}

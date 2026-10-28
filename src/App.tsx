@@ -25,6 +25,7 @@ import { RouteSummary } from './components/RouteSummary';
 import { TopRightMenu } from './components/TopRightMenu';
 import { FavoritesMenu } from './components/FavoritesMenu';
 import { JournalCard } from './components/JournalCard';
+import { ProWorkbench } from './components/ProWorkbench';
 import { AirportCard } from './components/AirportCard';
 
 const SB_USER_KEY = 'gcmap.sbfuser';
@@ -121,7 +122,7 @@ function parseUrl(q: URLSearchParams): UrlState {
     units: q.get('u') === 'mi' || q.get('u') === 'nm' ? (q.get('u') as Units) : 'km',
     labels: q.get('labels') !== '0',
     globe: q.get('globe') === '1',
-    dark: q.get('theme') !== 'light',
+    dark: true,
     sbf: q.get('sbf') ?? '',
     plane: q.get('plane') === '1',
     terrain: q.get('terrain') === '1',
@@ -160,6 +161,14 @@ export default function App() {
   const boot = useRef(loadBootState()).current;
   const bootQuery = boot.query;
   const initial = useRef(parseUrl(bootQuery)).current;
+  const [legacyUi, setLegacyUi] = useState(() => {
+    try { return localStorage.getItem('gcmap.uiLayout') === 'classic'; } catch { return false; }
+  });
+  const toggleUi = () => setLegacyUi(current => {
+    const next = !current;
+    try { localStorage.setItem('gcmap.uiLayout', next ? 'classic' : 'pro'); } catch { /* Session-only fallback. */ }
+    return next;
+  });
   const [lang, setLang] = useState<Lang>(initial.lang);
   const [base, setBase] = useState<BaseMode>(initial.base);
   const [units, setUnits] = useState<Units>(initial.units);
@@ -170,7 +179,7 @@ export default function App() {
   const [urlBooted, setUrlBooted] = useState(false);
   const [labelsOn, setLabelsOn] = useState(initial.labels);
   const [globeOn, setGlobeOn] = useState(initial.globe);
-  const [dark, setDark] = useState(initial.dark);
+  const dark = true;
   const [planeOn, setPlaneOn] = useState(initial.plane);
   const [terrainOn, setTerrainOn] = useState(initial.terrain);
   // 昼夜光照 + 手动 UTC 时刻（null=跟随真实时钟；拖动后不被 60s 定时器覆盖）
@@ -187,12 +196,16 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [sbfUi, setSbfUi] = useState<SbfUi>({ kind: 'idle' });
   const [mapReady, setMapReady] = useState(false);
+  const [mapZoom, setMapZoom] = useState<number | null>(null);
   // 地图样式加载失败（load 永不触发，如断网/瓦片服务不可达）：30s 未就绪给出可恢复提示
   const [mapFailed, setMapFailed] = useState(false);
   // 公开版：用户已填入自己的卫星 key（存 localStorage；填过则菜单收起为换 Key 按钮）
   const [satKeySet, setSatKeySet] = useState(hasRuntimeMapTilerKey);
+
   const mapDivRef = useRef<HTMLDivElement>(null);
+  const attributionRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
+  const cameraRef = useRef<{ center: [number, number]; zoom: number; bearing: number; pitch: number } | null>(null);
   const readyRef = useRef(false);
   const fmtRef = useRef<(km: number, u: Units) => string>(() => '');
   // 就绪竞态防线：onReady 同步的是"当前最新"状态，而不是挂载时的 URL 快照
@@ -241,16 +254,25 @@ export default function App() {
   useEffect(() => {
     let disposed = false;
     let controller: MapController | null = null;
+    // Fast Refresh can retain React state while replacing the map instance.
+    readyRef.current = false;
+    controllerRef.current = null;
+    setMapReady(false);
     import('./map/MapController')
       .then(({ MapController: MapControllerImpl }) => {
         if (disposed || !mapDivRef.current) return;
-        controller = new MapControllerImpl(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe, initial.dark);
+        controller = new MapControllerImpl(mapDivRef.current, initial.lang as LabelLanguage, initial.base, initial.globe, initial.dark, attributionRef.current ?? undefined);
         controllerRef.current = controller;
+        const updateZoom = () => { if (!disposed) setMapZoom(controller!.map.getZoom()); };
+        controller.map.on('zoom', updateZoom);
+        updateZoom();
+        if (!legacyUi) controller.setFitPadding({ top: 80, bottom: 70, left: 45, right: 45 });
         // 机场 Pin 点击 → 信息卡（水平夹紧在视口内，卡片宽约 230px）
         controller.onPinClick((airport, x, y) => {
-          setPinCard({ airport, x: Math.min(Math.max(x, 125), window.innerWidth - 125), y });
+          setPinCard({ airport, x: Math.min(Math.max(x, 125), (mapDivRef.current?.clientWidth ?? window.innerWidth) - 125), y });
         });
         controller.onReady(() => {
+          if (disposed) return;
           readyRef.current = true;
           setMapReady(true);
           controller!.setBase(baseRef.current);
@@ -270,8 +292,9 @@ export default function App() {
           const latest = routesRef.current;
           if (latest.length) {
             setLegsMap(controller!.syncRoutes(latest, unitsRef.current, (km, u) => fmtRef.current(km, u)));
-            controller!.fitRoutes(latest.filter((r) => r.visible));
+            if (!cameraRef.current) controller!.fitRoutes(latest.filter((r) => r.visible));
           }
+          if (cameraRef.current) controller!.map.jumpTo(cameraRef.current);
         });
       })
       .catch((e) => {
@@ -280,10 +303,28 @@ export default function App() {
       });
     return () => {
       disposed = true;
-      controller?.map.remove();
+      readyRef.current = false;
+      controllerRef.current = null;
+      if (controller) {
+        const map = controller.map;
+        const center = map.getCenter();
+        cameraRef.current = { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
+        map.remove();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [legacyUi]);
+
+  useEffect(() => {
+    const container = mapDivRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      setPinCard(null);
+      controllerRef.current?.map.resize();
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [legacyUi]);
 
   // 机场数据 chunk 就绪后：解析航线（URL 参数，或裸 URL 时的本地草稿快照），
   // 无法识别的部分一次性提示（错误样式，可关闭）。
@@ -652,6 +693,7 @@ export default function App() {
     setSatKeySet(true);
   };
 
+
   // ---- 航线收藏（本地持久化；恢复替换当前航线，经撤销可还原） ----
   const saveFavorite = (name: string) => {
     if (!routes.length) return;
@@ -770,8 +812,9 @@ export default function App() {
   // 深链里无法识别的部分：已并入机场数据就绪后的 boot effect（parseUrlRoutes 的 dropped）
 
   // 直达链接 ?sbf=<用户名>：地图与机场数据都就绪后拉取最新 OFP 作为一条新航线
+  const initialSbfImportedRef = useRef(false);
   useEffect(() => {
-    if (!mapReady || !initial.sbf) return;
+    if (!mapReady || !initial.sbf || initialSbfImportedRef.current) return;
     let cancelled = false;
     airportsReady
       .then(() => (cancelled ? null : fetchLatestOfp(initial.sbf)))
@@ -780,6 +823,7 @@ export default function App() {
         const oa = findByCode(r.originIcao) ?? findByCode(r.originIata);
         const da = findByCode(r.destIcao) ?? findByCode(r.destIata);
         if (!oa || !da) return;
+        initialSbfImportedRef.current = true;
         addRoutes([[oa, da]], {
           waypoints: r.waypoints,
           simbriefUser: initial.sbf,
@@ -798,10 +842,45 @@ export default function App() {
   const selected = routes.find((r) => r.id === selectedId) ?? null;
 
   return (
-    <div className="app-root">
-      <div ref={mapDivRef} className="map-root" />
-      <div className={`flight-panel${panelOpen ? '' : ' collapsed'}`}>
-        <SearchPanel
+    <ProWorkbench
+      legacyUi={legacyUi}
+      lang={lang}
+      t={t}
+      base={base}
+      onBase={setBase}
+      globe={globeOn}
+      onGlobe={setGlobeOn}
+      labels={labelsOn}
+      onLabels={setLabelsOn}
+      units={units}
+      onUnits={setUnits}
+      onFit={() => {
+        const c = controllerRef.current;
+        if (!readyRef.current || !c) return;
+        if (selected) c.fitRoute(selected.airports);
+        else c.fitRoutes(routes.filter(r => r.visible));
+      }}
+      panelOpen={panelOpen}
+      onPanel={() => setPanelOpen(o => !o)}
+      mapReady={mapReady}
+      mapZoom={mapZoom}
+      attributionRef={attributionRef}
+      routeCount={routes.length}
+      selectedCodes={selected?.airports.map(a => a.iata || a.icao) ?? []}
+      map={<><div ref={mapDivRef} className="map-root" />
+{pinCard && (
+        <AirportCard
+          airport={pinCard.airport}
+          x={pinCard.x}
+          y={pinCard.y}
+          visited={journal.visited.includes(pinCard.airport.iata || pinCard.airport.icao)}
+          onToggleVisited={() => toggleVisitedCode(pinCard.airport.iata || pinCard.airport.icao)}
+          onClose={() => setPinCard(null)}
+          t={t}
+        />
+      )}
+      </>}
+      search={<SearchPanel
           selected={selected?.airports ?? []}
           t={t}
           onAdd={addRoute}
@@ -818,16 +897,8 @@ export default function App() {
             onImportNow: importSbfNow,
             onDismissMsg: cancelSbf,
           }}
-        />
-        <JournalCard
-          journal={journal}
-          onRemoveEntry={removeJournalEntry}
-          onClear={clearJournalEntries}
-          t={t}
-        />
-        {routes.length > 0 && (
-          <div className="panel-lower">
-            <RouteList
+        />}
+      routes={routes.length ? <RouteList
               routes={routes}
               selectedId={selectedId}
               legsMap={legsMap}
@@ -837,8 +908,8 @@ export default function App() {
               onDelete={deleteRoute}
               onStyle={styleRoute}
               t={t}
-            />
-            <RouteSummary
+            /> : <div className="pro-empty">{lang === 'zh' ? '暂无航线。输入机场代码或名称以开始规划。' : 'No routes yet. Search airports to start planning.'}</div>}
+      summary={selected ? <RouteSummary
               legs={selected ? legsMap[selected.id] ?? [] : []}
               route={selected}
               units={units}
@@ -848,38 +919,27 @@ export default function App() {
               onRecord={
                 selected && (legsMap[selected.id]?.length ?? 0) > 0 ? recordSelectedRoute : undefined
               }
-            />
-          </div>
-        )}
-      </div>
-      <button
-        type="button"
-        className={`panel-toggle${panelOpen ? '' : ' collapsed'}`}
-        onClick={() => setPanelOpen((o) => !o)}
-        aria-expanded={panelOpen}
-        aria-label={panelOpen ? t.collapsePanel : t.expandPanel}
-        title={panelOpen ? t.collapsePanel : t.expandPanel}
-      >
-        <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden>
-          <path
-            d="M7.5 4l6 6-6 6"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-      <FavoritesMenu
+            /> : <div className="pro-empty">{lang === 'zh' ? '选择一条航线，查看距离、航向与当地到达时间。' : 'Select a route to inspect distances, bearings and local arrival times.'}</div>}
+      journal={<JournalCard
+          defaultOpen={!legacyUi}
+          journal={journal}
+          onRemoveEntry={removeJournalEntry}
+          onClear={clearJournalEntries}
+          t={t}
+        />}
+      favorites={<FavoritesMenu
+        docked={!legacyUi}
         favorites={favorites}
         hasRoutes={routes.length > 0}
         onSave={saveFavorite}
         onApply={applyFavorite}
         onDelete={deleteFavorite}
         t={t}
-      />
-      <TopRightMenu
+      />}
+      options={<TopRightMenu
+        docked={!legacyUi}
+        legacyUi={legacyUi}
+        onToggleUi={toggleUi}
         base={base}
         onBase={setBase}
         globeOn={globeOn}
@@ -895,30 +955,15 @@ export default function App() {
         onLang={setLang}
         labelsOn={labelsOn}
         onLabels={setLabelsOn}
-        dark={dark}
-        onDark={setDark}
         planeOn={planeOn}
         onPlane={setPlaneOn}
         keyEditable={KEY_EDITABLE}
         hasSatKey={satKeySet}
         onSatKey={applySatKey}
         t={t}
-      />
-      <div className="brand">
-        <span className="brand-name">{t.appName}</span>
-      </div>
-      {pinCard && (
-        <AirportCard
-          airport={pinCard.airport}
-          x={pinCard.x}
-          y={pinCard.y}
-          visited={journal.visited.includes(pinCard.airport.iata || pinCard.airport.icao)}
-          onToggleVisited={() => toggleVisitedCode(pinCard.airport.iata || pinCard.airport.icao)}
-          onClose={() => setPinCard(null)}
-          t={t}
-        />
-      )}
-      {pendingUndo && (
+      />}
+      overlays={<>
+{pendingUndo && (
         <div className="card undo-toast" role="status">
           <span className="undo-label">{pendingUndo.label}</span>
           <button type="button" className="sb-go" onClick={undoPending}>
@@ -943,6 +988,7 @@ export default function App() {
           </button>
         </div>
       )}
-    </div>
+      </>}
+    />
   );
 }

@@ -117,6 +117,12 @@ interface RouteRecord {
 
 export class MapController {
   map: MLMap;
+  /** Legacy floating layouts keep their padding; docked layouts supply viewport-only margins. */
+  private fitPadding = FIT_PAD;
+
+  setFitPadding(padding: typeof FIT_PAD): void {
+    this.fitPadding = padding;
+  }
   private routes = new Map<string, RouteRecord>();
   private routeLabelLayers = new Set<string>();
   // 机场 Pin 点击回调（App 渲染信息卡；null = 未注册）
@@ -159,7 +165,7 @@ export class MapController {
   // 装饰小飞机总开关（默认关闭，右上菜单控制；URL plane=1）
   private planesEnabled = false;
 
-  constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false, dark = true) {
+  constructor(container: HTMLElement, lang: LabelLanguage, base: BaseMode, globe = false, dark = true, attributionHost?: HTMLElement) {
     // 卫星瓦片自定义协议必须在样式构建前注册，否则首批 gsat:// 瓦片会请求未注册协议；
     // getter 是动态的：用户运行时填入/更换 key 后无需重注册
     ensureProtocol(() => activeMapTilerKey());
@@ -185,7 +191,19 @@ export class MapController {
       canvasContextAttributes: { preserveDrawingBuffer: true }, // 供截图/导出与自动化测试读帧
     });
     // 底图资源署名来自样式 sources；不再叠加旧 NASA 绿毯署名
-    this.map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
+    if (attributionHost) {
+      // Keep the native, source-aware attribution control alive outside the canvas.
+      const attribution = new AttributionControl({ compact: false });
+      this.map.addControl({
+        onAdd: (map: MLMap) => {
+          attributionHost.append(attribution.onAdd(map));
+          return document.createElement('div');
+        },
+        onRemove: () => attribution.onRemove(),
+      }, 'bottom-right');
+    } else {
+      this.map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
+    }
     this.map.addControl(new NavigationControl({ showCompass: false }), 'bottom-right');
     // 比例尺已按用户要求移除（左下角只留品牌水印）
     if (import.meta.env.DEV) {
@@ -1017,7 +1035,7 @@ export class MapController {
     }
     this.map.fitBounds(
       [[minLon, minLat], [maxLon, maxLat]],
-      { padding: FIT_PAD, duration: 900, maxZoom: 10.5, linear: false },
+      { padding: this.fitPadding, duration: 900, maxZoom: 10.5, linear: false },
     );
   }
 

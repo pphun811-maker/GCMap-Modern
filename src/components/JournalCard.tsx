@@ -3,6 +3,7 @@ import { sumJournalKm, type JournalData } from '../state/saved';
 import type { Strings } from '../i18n/strings';
 
 interface Props {
+  defaultOpen?: boolean;
   journal: JournalData;
   onRemoveEntry: (id: string) => void;
   onClear: () => void;
@@ -14,8 +15,8 @@ const fmtDate = (at: number) =>
   new Date(at).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
 
 /** 左侧面板的飞行足迹卡：默认折叠为一行统计，展开看逐条记录（去过的机场在 Pin 信息卡标记） */
-export function JournalCard({ journal, onRemoveEntry, onClear, t }: Props) {
-  const [open, setOpen] = useState(false);
+export function JournalCard({ journal, onRemoveEntry, onClear, t, defaultOpen = false }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
   const totalKm = sumJournalKm(journal.entries);
   // 折叠行统计：有记录显示完整统计；只有足迹标记时显示机场数；全空显示占位
   const summary = journal.entries.length
