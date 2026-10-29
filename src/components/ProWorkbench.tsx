@@ -113,7 +113,7 @@ export function ProWorkbench(p: Props) {
         </aside>
         <section className="pro-map-viewport" aria-label={zh ? '航线地图' : 'Route map'}>
           {p.map}
-          <div className="pro-map-caption"><strong>{p.selectedCodes.length ? p.selectedCodes.join(' → ') : (zh ? '开始规划航线' : 'Plan your next route')}</strong></div>
+          {p.selectedCodes.length >= 2 && <div className="pro-map-caption"><strong>{p.selectedCodes.join(' → ')}</strong></div>}
         </section>
         <aside className="pro-inspector" aria-label={zh ? '航线详情' : 'Route details'}>
           <div className="pro-pane-heading"><span>{zh ? '航线详情' : 'Route details'}</span><span>INSPECTOR</span><button type="button" className="pro-dock-collapse" onClick={() => setDetailsOpen(false)} aria-label={zh ? '收起右侧栏' : 'Collapse right sidebar'} title={p.t.collapsePanel}>›</button></div>
