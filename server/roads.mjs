@@ -35,13 +35,43 @@ const REMOTE_MIN_TZ = 8;
 const MAX_TILES = 64;
 const MAX_FEATURES = 60000;
 const CACHE_TILES = 192;
+// Round 12 P0：远端分支改为有界并发取瓦片，不再逐个 await。并发数仅为本地
+// 基准可调，默认值对应实测 12 路拐点；每张瓦片最多尝试两次后记为失败。
+const REMOTE_CONCURRENCY_DEFAULT = 12;
+const REMOTE_CONCURRENCY_MAX = 32;
+const REMOTE_TILE_ATTEMPTS = 2;
 const MID_MIN_VIEW_Z = 3.5;
 const NEAR_MIN_VIEW_Z = 5.9;
 const MID_TZ_MIN = 4;
 const MID_TZ_MAX = 7;
+// Round 12 P2-wide LOD：近景（view z >= 8）的 z8+ 瓦片足迹超过本预算时，改用
+// 能放下的最高较低数据缩放，让响应完整且快，而不是撞上 MAX_FEATURES 截断。
+// 这是显式 LOD 策略，通过 metadata.dataZoom 暴露；小视野保留 z8+ 细节，宽视野
+// 逐级回退到 z7/z6/…/z4。环境变量仅测试用。
+const NEAR_TILE_BUDGET_DEFAULT = 24;
+const NEAR_TILE_BUDGET_MAX = 64;
+const NEAR_ADAPTIVE_MIN_TZ = 4;
+function nearTileBudget() {
+  const raw = process.env.FLIGHTLINE_NEAR_TILE_BUDGET;
+  if (raw === undefined || String(raw).trim() === '') return NEAR_TILE_BUDGET_DEFAULT;
+  const n = Number(raw);
+  // 用普通 min/max：clamp 在本模块后面才声明，模块加载期调用会命中 TDZ。
+  return Number.isFinite(n)
+    ? Math.min(NEAR_TILE_BUDGET_MAX, Math.max(1, Math.floor(n)))
+    : NEAR_TILE_BUDGET_DEFAULT;
+}
+const NEAR_TILE_BUDGET = nearTileBudget();
 const CACHE_RESPONSES = 48;
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+// FLIGHTLINE_ROADS_CONCURRENCY：仅基准测试用。未设置或非数字保持默认；数值
+// 向下取整并夹到 1..32，避免笔误打开无上限的上游 Range 请求。
+function remoteConcurrency() {
+  const raw = process.env.FLIGHTLINE_ROADS_CONCURRENCY;
+  if (raw === undefined || String(raw).trim() === '') return REMOTE_CONCURRENCY_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) ? clamp(Math.floor(n), 1, REMOTE_CONCURRENCY_MAX) : REMOTE_CONCURRENCY_DEFAULT;
+}
 const fract = (x) => x - Math.floor(x);
 const smoothstep = (a, b, x) => {
   const t = clamp((x - a) / (b - a), 0, 1);
@@ -149,6 +179,24 @@ function midDataZoom(z, w, s, e, n) {
   return tz;
 }
 
+// Round 12 P2-wide：能放进近景预算的最高数据缩放。z8.5 宽视野要 49 张 z8 瓦片
+//（撞上 60k 要素截断），会降到 z7（或更低）并返回完整响应。下限是 z4；若连
+// z4 都超出不变的 MAX_TILES 守卫，请求维持原有 413。
+// budget 参数只为跨实现等价校验保留，默认就是模块预算。
+function nearDataZoom(z, w, s, e, n, budget = NEAR_TILE_BUDGET) {
+  let tz = Math.min(Math.floor(z), 15);
+  while (tz > NEAR_ADAPTIVE_MIN_TZ && tileFootprint(w, s, e, n, tz) > budget) tz--;
+  return tz;
+}
+
+// Round 12 P3 截断重试决策：首次构建撞上 MAX_FEATURES 时丢弃，并在 tz-1（最低
+// z4）重试一次；重试计划仍须通过 64 张瓦片守卫。返回 null 表示不重试。
+function truncationRetryZoom(truncated, tz, w, s, e, n) {
+  if (!truncated || tz <= NEAR_ADAPTIVE_MIN_TZ) return null;
+  const next = tz - 1;
+  return tileFootprint(w, s, e, n, next) > MAX_TILES ? null : next;
+}
+
 function haversineKm(a, b) {
   const dLat = (b[1] - a[1]) * Math.PI / 180;
   const dLon = (b[0] - a[0]) * Math.PI / 180;
@@ -187,6 +235,7 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
   const { VectorTile } = require('@mapbox/vector-tile');
   const { PbfReader } = require('pbf');
   const tileCache = new Map();
+  const fetchConcurrency = remoteConcurrency();
   let density = null;
 
   function loadDensity() {
@@ -331,7 +380,17 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
   //（缓存命中也回放原构建的数字）。
   function sendBody(req, res, entry, cache) {
     const accept = String(req.headers['accept-encoding'] || '');
-    const headers = { 'Cache-Control': 'no-cache', 'X-Roads-Cache': cache };
+    const headers = {
+      'Cache-Control': 'no-cache',
+      'X-Roads-Cache': cache,
+      // Round 12 P2：客户端会通过另一个 loopback 主机名（localhost <-> 127.0.0.1）
+      // 请求渐进式低细节回退，以避开底图已占满的六条 HTTP/1.1 连接。那是一次
+      // 跨源简单 GET，因此响应需要此头；无凭据、无预检。
+      'Access-Control-Allow-Origin': '*',
+      // 自定义测量头不属于 CORS 安全列表；暴露它们，让跨源回退仍能读到同样的
+      // 耗时诊断（content-length 本来就可读）。
+      'Access-Control-Expose-Headers': 'X-Roads-Timing, X-Roads-Cache',
+    };
     if (entry.summary) headers['X-Roads-Timing'] = JSON.stringify({ ...entry.summary, cache });
     if (accept.includes('gzip')) {
       if (!entry.gz) {
@@ -358,6 +417,9 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
 
   function handle(req, res, url) {
     const timing = { start: Date.now(), decodeMs: 0, buildMs: 0, serializeMs: 0, gzipMs: 0, cache: 'miss' };
+    // Round 12：响应已提交或远端周期被放弃后置位；连接关闭会停止调度新瓦片。
+    let cancelled = false;
+    let finished = false;
     try {
       const z = clamp(Number(url.searchParams.get('z') || 7), 0, 24);
       const w = Number(url.searchParams.get('w')), s = Number(url.searchParams.get('s'));
@@ -380,35 +442,68 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
         sendBody(req, res, cached, 'hit');
         return;
       }
-      const tz = z >= 8 ? Math.min(Math.floor(z), 15)
+      // Round 12 P2-wide LOD：近景视野的 z8+ 瓦片足迹超过 NEAR_TILE_BUDGET
+      // 时，改用能放下的最高较低数据缩放；选中的 tz 通过 metadata.dataZoom
+      // 暴露，小视野仍保留 z8+ 细节。
+      const defaultTz = z >= 8 ? Math.min(Math.floor(z), 15)
         : z >= 7 ? 7
         : z >= NEAR_MIN_VIEW_Z ? 6
         : midDataZoom(z, w, s, e, n);
+      const tz0 = z >= 8 ? nearDataZoom(z, w, s, e, n) : defaultTz;
       const viewBand = z >= NEAR_MIN_VIEW_Z ? 'near' : 'mid';
-      const remoteMode = !!remote && (!archive || tz >= REMOTE_MIN_TZ);
-      const tileN = 2 ** tz;
-      const x0 = Math.floor((w + 180) / 360 * tileN);
-      const x1 = Math.floor((e + 180) / 360 * tileN);
-      const y0 = Math.floor(yOfLat(n, tileN));
-      const y1 = Math.floor(yOfLat(s, tileN));
-      if ((x1 - x0 + 1) * (y1 - y0 + 1) > MAX_TILES) {
-        res.writeHead(413, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          error: 'too many tiles', z, tz, viewBand,
-          tiles: (x1 - x0 + 1) * (y1 - y0 + 1),
-        }));
-        return;
-      }
       const sharp = smoothstep(6.5, 8.5, z);
       const midLat = (s + n) / 2;
       const metresPerPixel = 156543.03392 * Math.cos(midLat * Math.PI / 180) / 2 ** z;
       const chunkKm = viewBand === 'mid'
         ? clamp(24 * metresPerPixel / 1000, 30, 120)
         : clamp(8 * metresPerPixel / 1000, 4, 22);
-      const tolerance = 4 * 2 ** (tz - z);
-      const features = [];
+
+      // 每个数据缩放一份计划。构建计划很便宜；真正的瓦片枚举/取数在
+      // runLocal/runRemote 里做。
+      const planFor = (planTz) => {
+        const nTiles = 2 ** planTz;
+        const px0 = Math.floor((w + 180) / 360 * nTiles);
+        const px1 = Math.floor((e + 180) / 360 * nTiles);
+        const py0 = Math.floor(yOfLat(n, nTiles));
+        const py1 = Math.floor(yOfLat(s, nTiles));
+        return {
+          tz: planTz,
+          // 主项目部署适配：本地 z0-7 档案可能不存在，此时 tz<8 也走远端。
+          remoteMode: !!(remote && (!archive || planTz >= REMOTE_MIN_TZ)),
+          tileN: nTiles,
+          x0: px0, x1: px1, y0: py0, y1: py1,
+          tiles: (px1 - px0 + 1) * (py1 - py0 + 1),
+        };
+      };
+
+      let plan = planFor(tz0);
+      if (plan.tiles > MAX_TILES) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'too many tiles', z, tz: plan.tz, viewBand, tiles: plan.tiles,
+        }));
+        return;
+      }
+
+      // 尝试状态。applyPlan 会重置全部累加器，截断重试因此丢弃未完成的
+      // 尝试，而不是把两次结果混在一起。
+      let tz = plan.tz;
+      let tolerance = 4 * 2 ** (plan.tz - z);
+      let features = [];
       let tiles = 0, vertices = 0, truncated = false, failedTiles = 0;
-      const classes = {};
+      let classes = {};
+
+      const applyPlan = (next) => {
+        plan = next;
+        tz = next.tz;
+        tolerance = 4 * 2 ** (next.tz - z);
+        features = [];
+        tiles = 0;
+        vertices = 0;
+        truncated = false;
+        failedTiles = 0;
+        classes = {};
+      };
 
       const pushTile = (entry, x, y) => {
         if (!entry) return;
@@ -461,19 +556,93 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
         }
       };
 
+      const runLocal = (next) => {
+        applyPlan(next);
+        for (let x = next.x0; x <= next.x1 && !truncated; x++) {
+          for (let y = next.y0; y <= next.y1 && !truncated; y++) {
+            const tx = ((x % next.tileN) + next.tileN) % next.tileN;
+            let entry;
+            {
+              const t0 = Date.now();
+              try {
+                entry = decodeTileLocal(next.tz, tx, y);
+              } catch {
+                entry = { failed: true, parts: [] };
+              }
+              timing.decodeMs += Date.now() - t0;
+            }
+            pushTile(entry, tx, y);
+          }
+        }
+      };
+
+      const runRemote = async (next) => {
+        applyPlan(next);
+        // Round 07：远端周期是异步的（真实 Range 请求）。下面的本地 tz<8 路径
+        // 保持完全同步——Round 04 状态机审计会用 mock 响应对象调用 handle()
+        // 并立即读回响应体。
+        //
+        // Round 12 P0：串行 await 就是全部延迟（网络等待占主导；烘焙只要
+        // 28-221ms）。按原来的 x→y 顺序构造精确瓦片表，用有界 worker 池取数
+        //（每张瓦片重试一次），按索引存 entry，再按同一顺序烘焙。因此执行顺序
+        // 确定，且与串行路径的要素顺序一致。响应关闭后不再调度新瓦片；已在途
+        // 瓦片允许自然结束。
+        const coords = [];
+        for (let x = next.x0; x <= next.x1; x++) {
+          const tx = ((x % next.tileN) + next.tileN) % next.tileN;
+          for (let y = next.y0; y <= next.y1; y++) coords.push([tx, y]);
+        }
+        const entries = new Array(coords.length);
+        const fetchStart = Date.now();
+        let nextIndex = 0;
+        const worker = async () => {
+          while (!cancelled) {
+            const i = nextIndex++;
+            if (i >= coords.length) return;
+            const [tx, ty] = coords[i];
+            let entry = null;
+            for (let attempt = 0; attempt < REMOTE_TILE_ATTEMPTS; attempt++) {
+              try {
+                entry = await decodeTileRemote(next.tz, tx, ty);
+              } catch {
+                entry = { failed: true, parts: [] };
+              }
+              // 只有取数/解码失败才重试；瓦片不存在（null）是确定答案，不进缓存。
+              if (!entry || !entry.failed) break;
+            }
+            entries[i] = entry;
+          }
+        };
+        const lanes = Math.min(fetchConcurrency, coords.length);
+        await Promise.all(Array.from({ length: lanes }, worker));
+        timing.decodeMs += Date.now() - fetchStart;
+        if (cancelled) return false;
+        for (let i = 0; i < coords.length && !truncated; i++) {
+          pushTile(entries[i], coords[i][0], coords[i][1]);
+        }
+        return true;
+      };
+
       const finish = () => {
+        finished = true;
         const metadata = {
           z, tz, w, s, e, n,
           viewBand,
           dataZoom: tz,
           tiles, features: features.length, vertices,
           classes, truncated, failedTiles,
-          remote: !!remoteMode,
+          remote: !!plan.remoteMode,
+          // 仅远端字段：本地 tz<8 响应体与已验收形态逐字节一致。
+          ...(plan.remoteMode ? { remoteConcurrency: fetchConcurrency } : {}),
+          // 近景 LOD 策略（P2-wide）：显式暴露，客户端据此报告较粗的数据缩放，
+          // 而不是看起来像静默降质。
+          ...(z >= 8 ? { nearTileBudget: NEAR_TILE_BUDGET, nearTzLowered: tz < Math.min(Math.floor(z), 15) } : {}),
+          ...(timing.retry ? { retry: timing.retry } : {}),
           sharp: Number(sharp.toFixed(3)),
           chunkKm: Number(chunkKm.toFixed(2)),
           tolerance: Number(tolerance.toFixed(2)),
           density: 'settlement_lights_v1 red x alpha, bilinear, 4096x2048',
-          source: remoteMode
+          source: plan.remoteMode
             ? `remote Range tiles tz=${tz} (official world z8-12 / protomaps daily z13-15), kinds highway/major/medium/minor`
             : `local world_z0_z7.pmtiles roads tz=${tz} (highway/major_road present in data)`,
           elapsedMs: Date.now() - timing.start,
@@ -496,6 +665,8 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
           decodeMs: timing.decodeMs, buildMs: timing.buildMs,
           serializeMs: timing.serializeMs, gzipMs: timing.gzipMs,
           totalMs: timing.totalMs, features: features.length, vertices, tiles,
+          dataZoom: tz,
+          ...(timing.retry ? { retry: timing.retry } : {}),
         };
         // 只缓存完整成功；failedTiles>0 的响应不能当命中回放（FND-16）。
         if (!truncated && failedTiles === 0) {
@@ -507,46 +678,49 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
         sendBody(req, res, { body, gz, summary }, 'miss');
       };
 
-      if (remoteMode) {
+      // 截断守卫：首次构建撞上 MAX_FEATURES 时丢弃，并在 tz-1（最低 z4）
+      // 重试一次。重试按重试计划走本地或远端；本地路径保持同步。
+      const retryPlan = () => {
+        const nextTz = truncationRetryZoom(truncated, tz, w, s, e, n);
+        if (nextTz === null) return null;
+        const retry = planFor(nextTz);
+        timing.retry = {
+          fromTz: tz, toTz: retry.tz,
+          fromFeatures: features.length, fromTruncated: true,
+        };
+        return retry;
+      };
+
+      if (plan.remoteMode) {
+        if (typeof res.on === 'function') {
+          res.on('close', () => {
+            if (!finished && !res.writableEnded) cancelled = true;
+          });
+        }
         (async () => {
-          for (let x = x0; x <= x1 && !truncated; x++) {
-            for (let y = y0; y <= y1 && !truncated; y++) {
-              let entry;
-              {
-                const t0 = Date.now();
-                try {
-                  entry = await decodeTileRemote(tz, ((x % tileN) + tileN) % tileN, y);
-                } catch {
-                  entry = { failed: true, parts: [] };
-                }
-                timing.decodeMs += Date.now() - t0;
-              }
-              pushTile(entry, ((x % tileN) + tileN) % tileN, y);
+          const built = await runRemote(plan);
+          if (!built || cancelled) return;
+          const retry = retryPlan();
+          if (retry) {
+            if (retry.remoteMode) {
+              const ok = await runRemote(retry);
+              if (!ok || cancelled) return;
+            } else {
+              runLocal(retry);
             }
           }
           finish();
         })().catch((error) => {
           console.error('roads service:', error);
+          if (cancelled) return;
           if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: String(error && error.message || error) }));
         });
         return;
       }
-      for (let x = x0; x <= x1 && !truncated; x++) {
-        for (let y = y0; y <= y1 && !truncated; y++) {
-          let entry;
-          {
-            const t0 = Date.now();
-            try {
-              entry = decodeTileLocal(tz, ((x % tileN) + tileN) % tileN, y);
-            } catch {
-              entry = { failed: true, parts: [] };
-            }
-            timing.decodeMs += Date.now() - t0;
-          }
-          pushTile(entry, ((x % tileN) + tileN) % tileN, y);
-        }
-      }
+      runLocal(plan);
+      const retry = retryPlan();
+      if (retry) runLocal(retry);
       finish();
     } catch (error) {
       console.error('roads service:', error);
@@ -565,8 +739,9 @@ export function createRoadService({ archive, remote, assetsDir = path.join(HERE,
       cachedResponses: responseCache.size,
       remote: !!remote,
       localArchive: !!archive,
+      remoteConcurrency: fetchConcurrency,
     }),
   };
 }
 
-export { simplify, splitAntimeridian, pcg3d };
+export { simplify, splitAntimeridian, pcg3d, tileFootprint, midDataZoom, nearDataZoom, truncationRetryZoom };

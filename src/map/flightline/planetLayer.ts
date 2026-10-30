@@ -7,7 +7,11 @@
 // 保留的观感：
 //   - 终止线 LUT + 金色时刻叠色、地表材质、海洋 PBR/反光、轨道浮雕、轨道暗化；
 //   - 城市灯网（双三次平滑、闪烁、bloom）、雪/冰盖（常年冰雪 + 支撑掩膜）；
-//   - 夜路接管：u_roads_takeover / u_mid_takeover 把 atlas 压到 0.45 / 0.62；
+//   - atlas 交接按原作两条曲线（Round 12 P1-4）：光晕池与灯点同时乘
+//     handoff = 1 - smootherstep(5.25, 8.5, detail)，灯点再额外乘
+//     mix(1, LIGHTS_UNDER_ROADS, smoothstep(3.5, 5.5, detail))；
+//     稀疏低模路网可见时（u_road_fallback=1）atlas 再乘 FALLBACK_ATLAS_GAIN；
+//   - 8K 灯图懒加载（settlement_lights_v1_hi，失败保留 4K 底图）；
 //   - 大气边缘辉光（globe 模式；平面模式为 0）。
 //
 // 依赖适配：不依赖 demo 的全局 glMatrix / 根路径 fetch——矩阵求逆在本文件实现，
@@ -15,6 +19,35 @@
 import type { Map as MLMap } from 'maplibre-gl';
 import { mapResourceUrl } from '../styleFactory';
 import { dayNightUniforms } from '../dayNight';
+
+// Round 12 P2 follow-up：高分灯图在地图首次绘制后于后台加载（与缩放、夜路数据无关），
+// 以便“路网到达前”的近景首帧也能用上。requestIdleCallback 在首帧空闲时触发，
+// timeout 给连续渲染下的等待设上限；没有 rIC 时退回同量级的定时器。
+const HI_ATLAS_NAME = 'settlement_lights_v1_hi.png';
+/** 8K 灯图开关：资源与白名单未就位（见 scheduleHiAtlas 的说明），主项目先关。 */
+const HI_ATLAS_ENABLED = false;
+const HI_ATLAS_IDLE_TIMEOUT_MS = 800;
+const HI_ATLAS_FALLBACK_DELAY_MS = 600;
+// log2(sqrt(10)/3)：flglobe::tiles::tile_zoom（VA 0x180272120）在相机正下方瓦片上的
+// 精确值减相机 zoom（round-12-deep-re/reports/DETAIL-ZOOM-REPORT.md §5）。
+const DETAIL_ZOOM_OFFSET = 0.076001546722525;
+
+/** 灯图（texture unit 0）的上传尺寸与诊断信息；atlasInfo 同时记录换图结果。 */
+interface AtlasInfo {
+  url: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  width: number;
+  height: number;
+  downscaled: boolean;
+  maxTexture: number;
+  rgbaBytes: number;
+  mipBytes: number;
+  state?: 'base' | 'hi';
+  uploadedInMs?: number;
+  decodeMs?: number;
+  hi?: { state: string; error?: string };
+}
 
 export interface PlanetState {
   /** 当前可见（vector 底图）；卫星底图关闭整层渲染，保留 GPU 资源避免反复上传 */
@@ -24,8 +57,13 @@ export interface PlanetState {
   cycle: boolean;
   sun: [number, number, number];
   timeDays: number;
+  /** 近景夜路权重（NightRoads.handoff()）。Round 12 起 shader 改为原作两条曲线，
+   *  不再有 takeover uniform；这两个值仍被记录，供诊断与后续接线使用。 */
   roadHandoff: number;
+  /** 中景夜路权重（NightRoads.midHandoff()）；同上，仅记录。 */
   midHandoff: number;
+  /** 稀疏低模路网（arterial fallback）是否为当前可见路网 → u_road_fallback。 */
+  roadFallback: boolean;
 }
 
 export interface PlanetLayerOptions {
@@ -151,7 +189,7 @@ const UNIFORM_NAMES = [
   'u_inverse', 'u_sun', 'u_center', 'u_globe', 'u_zoom', 'u_detail', 'u_cycle',
   'u_lights', 'u_material', 'u_atmosphere', 'u_dark', 'u_compare', 'u_snow',
   'u_time_days', 'u_twinkle', 'u_debug', 'u_elevation_texel', 'u_lights_texel',
-  'u_roads_takeover', 'u_mid_takeover', 'u_atlas_floor',
+  'u_road_fallback',
   't_lights', 't_elevation', 't_material', 't_snow', 't_snow_support', 't_lut',
 ];
 
@@ -181,6 +219,16 @@ export class PlanetLayer {
   private ready = false;
   private removed = false;
   private failed = false;
+  private maxTexture = 4096;
+  /** 灯图上传统计（基础 4K / 高分 8K 的尺寸、降采样、耗时），供诊断与 DEV 日志。 */
+  private atlasInfo: AtlasInfo | null = null;
+  private hiAtlasState: 'idle' | 'loading' | 'ready' | 'active' | 'failed' | 'disposed' = 'idle';
+  /** 已解码、等待 render() 里上传到 texture unit 0 的高分灯图。 */
+  private pendingAtlas: { source: TexImageSource; info: AtlasInfo } | null = null;
+  private hiAtlasScheduled = false;
+  private hiIdleHandle: number | null = null;
+  private hiIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private hiAtlasDecodeMs = 0;
   private inverse = new Float32Array(16);
   private state: PlanetState = {
     active: true,
@@ -189,6 +237,7 @@ export class PlanetLayer {
     timeDays: 0,
     roadHandoff: 0,
     midHandoff: 0,
+    roadFallback: false,
   };
   private options: PlanetLayerOptions;
 
@@ -251,9 +300,9 @@ export class PlanetLayer {
     gl.bindVertexArray(null);
 
     this.lut = makeLutTexture(gl);
-    const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    this.maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
     Promise.all([
-      ...IMAGE_NAMES.map((name, index) => this.loadImage(name, index, maxTexture)),
+      ...IMAGE_NAMES.map((name, index) => this.loadImage(name, index)),
       // 冰雪支撑掩膜是可选增强：缺失时只是不画稳定冰雪，不应让整层光照失效。
       this.loadSupport().catch((e) => {
         console.warn('[PlanetLayer] snow support mask unavailable:', String(e?.message ?? e));
@@ -272,24 +321,170 @@ export class PlanetLayer {
     });
   }
 
-  private async loadImage(name: string, index: number, maxTexture: number): Promise<void> {
+  /** 只在图像超出 cap 时降采样，返回将要上传的 source 与其精确尺寸。
+   *  基础纹理保持历史上的 4096 上限（高程 PNG 宽 8192，但一直按 4096 上传）；
+   *  只有懒加载的高分灯图把 GPU 的 MAX_TEXTURE_SIZE 当作上限。 */
+  private prepareAtlasSource(
+    image: HTMLImageElement,
+    name: string,
+    cap: number,
+    warnOnDownscale = false,
+  ): { source: TexImageSource; info: AtlasInfo } {
+    const downscaled = image.width > cap;
+    const width = downscaled ? cap : image.width;
+    const height = downscaled
+      ? Math.max(1, Math.round(image.height * cap / image.width))
+      : image.height;
+    let source: TexImageSource = image;
+    if (downscaled) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(image, 0, 0, width, height);
+      source = canvas;
+      // 显式请求的高分灯图绝不静默降级；基础纹理保留过去的静默行为。
+      if (warnOnDownscale) {
+        console.warn(
+          `[PlanetLayer] ${name} ${image.width}x${image.height} exceeds the ${cap}px cap ` +
+          `(MAX_TEXTURE_SIZE ${this.maxTexture}); uploaded ${width}x${height}`,
+        );
+      }
+    }
+    return {
+      source,
+      info: {
+        url: mapResourceUrl(`planet/${name}`),
+        sourceWidth: image.width,
+        sourceHeight: image.height,
+        width,
+        height,
+        downscaled,
+        maxTexture: this.maxTexture,
+        rgbaBytes: width * height * 4,
+        mipBytes: Math.ceil(width * height * 4 * 4 / 3),
+      },
+    };
+  }
+
+  private async loadImage(name: string, index: number): Promise<void> {
     const image = new Image();
     image.src = mapResourceUrl(`planet/${name}`);
     await image.decode();
     if (this.removed) return;
-    let source: TexImageSource = image;
-    const limit = Math.min(4096, maxTexture);
-    if (image.width > limit) {
-      const canvas = document.createElement('canvas');
-      canvas.width = limit;
-      canvas.height = Math.max(1, Math.round(image.height * limit / image.width));
-      canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
-      source = canvas;
+    const { source, info } = this.prepareAtlasSource(
+      image, name, Math.min(4096, this.maxTexture || 4096),
+    );
+    if (index === 0) {
+      // texture unit 0 是城市灯图：实际上传尺寸同时决定 render() 的 u_lights_texel。
+      this.atlasInfo = { ...info, state: 'base' };
     }
     this.sources[index] = source;
-    const width = source instanceof HTMLCanvasElement ? source.width : image.width;
-    const height = source instanceof HTMLCanvasElement ? source.height : image.height;
-    this.texelSizes[index] = [1 / width, 1 / height];
+    this.texelSizes[index] = [1 / info.width, 1 / info.height];
+  }
+
+  /** Round 12 P2 follow-up：首帧之后一次性在后台启动 8192x4096 灯图。
+   *  requestIdleCallback 先让首帧与地图初始化做完，timeout 给连续渲染下的等待设上限。
+   *  解码完成前（以及加载失败时永远）继续渲染 4K 底图，上传在 swapAtlas() 里完成。 */
+  private scheduleHiAtlas(): void {
+    // 主项目暂不启用 8K 灯图：public/map-static/planet 与服务端白名单（server/
+    // mapResources.mjs PLANET_TEXTURES）都只有 4096 底图，线上请求必然 404 并刷
+    // 告警；8192² 是 13 MB 游戏派生资源，体积/显存/移动端策略尚未决策
+    // （ROUND-12-HANDOFF §8）。要启用需三处同时到位：放文件、加白名单、把这里改 true。
+    if (!HI_ATLAS_ENABLED) return;
+    if (this.hiAtlasScheduled || this.hiAtlasState !== 'idle' || this.removed) return;
+    this.hiAtlasScheduled = true;
+    const start = (): void => {
+      this.hiIdleHandle = null;
+      this.hiIdleTimer = null;
+      if (this.removed || this.hiAtlasState !== 'idle') return;
+      this.hiAtlasState = 'loading';
+      void this.loadHiAtlas();
+    };
+    if (typeof requestIdleCallback === 'function') {
+      this.hiIdleHandle = requestIdleCallback(start, { timeout: HI_ATLAS_IDLE_TIMEOUT_MS });
+    } else {
+      this.hiIdleTimer = setTimeout(start, HI_ATLAS_FALLBACK_DELAY_MS);
+    }
+  }
+
+  private cancelScheduledHiAtlas(): void {
+    if (this.hiIdleHandle !== null && typeof cancelIdleCallback === 'function') {
+      cancelIdleCallback(this.hiIdleHandle);
+    }
+    if (this.hiIdleTimer !== null) clearTimeout(this.hiIdleTimer);
+    this.hiIdleHandle = null;
+    this.hiIdleTimer = null;
+  }
+
+  /** 一次性加载 8192x4096 灯图；解码完成前继续渲染 4K 底图。失败必须记录并告警。 */
+  private async loadHiAtlas(): Promise<void> {
+    const started = performance.now();
+    try {
+      const image = new Image();
+      image.src = mapResourceUrl(`planet/${HI_ATLAS_NAME}`);
+      await image.decode();
+      if (this.removed) { this.hiAtlasState = 'disposed'; return; }
+      const { source, info } = this.prepareAtlasSource(
+        image, HI_ATLAS_NAME, this.maxTexture || 4096, true,
+      );
+      this.hiAtlasDecodeMs = Math.round(performance.now() - started);
+      this.pendingAtlas = { source, info };
+      this.hiAtlasState = 'ready';
+      this.map.triggerRepaint();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.hiAtlasState = 'failed';
+      if (this.atlasInfo) this.atlasInfo.hi = { state: 'failed', error: message };
+      console.warn('[PlanetLayer] settlement lights hi atlas unavailable; keeping the 4096 base:', message);
+    }
+  }
+
+  /** 把解码好的高分灯图上传到 texture unit 0 并释放底图。在 render() 里调用，
+   *  这样 MapLibre 会在我们的 GL 调用之后失效自己的状态缓存（同 uploadTextures）。 */
+  private swapAtlas(gl: WebGL2RenderingContext): void {
+    if (!this.pendingAtlas) return;
+    const { source, info } = this.pendingAtlas;
+    this.pendingAtlas = null;
+    const keys = [gl.UNPACK_FLIP_Y_WEBGL, gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.UNPACK_ALIGNMENT];
+    const previous = keys.map((key) => gl.getParameter(key));
+    const started = performance.now();
+    let tex: WebGLTexture | null = null;
+    try {
+      gl.pixelStorei(keys[0], false);
+      gl.pixelStorei(keys[1], false);
+      gl.pixelStorei(keys[2], gl.NONE);
+      tex = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      const old = this.textures[0];
+      this.textures[0] = tex;
+      if (old) gl.deleteTexture(old);
+      this.texelSizes[0] = [1 / info.width, 1 / info.height];
+      this.atlasInfo = {
+        ...(this.atlasInfo ?? {}),
+        ...info,
+        state: 'hi',
+        uploadedInMs: Math.round(performance.now() - started),
+        decodeMs: this.hiAtlasDecodeMs,
+      };
+      this.hiAtlasState = 'active';
+      if (import.meta.env.DEV) console.info('[PlanetLayer] lights atlas', this.atlasInfo);
+    } catch (error) {
+      // GL 拒绝上传（例如显存不足）：保留底图并记录确切失败，而不是失去整张灯图。
+      if (tex) gl.deleteTexture(tex);
+      const message = error instanceof Error ? error.message : String(error);
+      this.hiAtlasState = 'failed';
+      if (this.atlasInfo) this.atlasInfo.hi = { state: 'failed', error: message };
+      console.warn('[PlanetLayer] settlement lights hi atlas upload failed; keeping the 4096 base:', message);
+    } finally {
+      keys.forEach((key, i) => gl.pixelStorei(key, previous[i]));
+    }
   }
 
   /** 冰川/冰盖支撑掩膜：与雪候补图共用 ±90 网格，一个 texel 一字节（R8 纹理省显存）。
@@ -371,15 +566,30 @@ export class PlanetLayer {
     this.map?.triggerRepaint();
   }
 
+  /** 近/中景夜路权重。Round 12 起 shader 用原作两条曲线，near/mid 不再驱动
+   *  takeover uniform；两者仍被记录（诊断/兼容），签名保持不变。 */
   setHandovers(near: number, mid: number): void {
     this.state.roadHandoff = near;
     this.state.midHandoff = mid;
     this.map?.triggerRepaint();
   }
 
+  /** 稀疏低模路网（arterial fallback）是否为当前可见路网 → u_road_fallback：
+   *  为 true 时 shader 把 atlas 再乘 FALLBACK_ATLAS_GAIN（0.65），让稀疏线段可读；
+   *  真实路网传 false，保持原作曲线。 */
+  setRoadFallback(fallback: boolean): void {
+    if (this.state.roadFallback === fallback) return;
+    this.state.roadFallback = fallback;
+    this.map?.triggerRepaint();
+  }
+
   render(gl: WebGL2RenderingContext, args: any): void {
     if (!this.state.active || !this.ready || this.failed || !this.program || !this.lut) return;
     if (!this.uploaded) this.uploadTextures(gl);
+    // Round 12 P2 follow-up：首帧之后启动高分灯图（与缩放、夜路数据无关），
+    // 解码完成后尽快换进 texture unit 0。
+    if (this.uploaded && !this.hiAtlasScheduled) this.scheduleHiAtlas();
+    if (this.pendingAtlas) this.swapAtlas(gl);
     const projection = args?.defaultProjectionData;
     if (!projection?.mainMatrix) return;
     const define = String(args?.shaderData?.define ?? '');
@@ -410,7 +620,12 @@ export class PlanetLayer {
     gl.uniform3fv(u.u_center, centerVec);
     gl.uniform1f(u.u_globe, globe ? 1 : 0);
     gl.uniform1f(u.u_zoom, this.map.getZoom());
-    gl.uniform1f(u.u_detail, this.map.getZoom());
+    // Round 12 P7：detail zoom 不等于相机 zoom。flglobe::tiles::tile_zoom
+    // （VA 0x180272120，round-12-deep-re 复原）对相机正下方的瓦片返回
+    //     viewZoom + log2(1 / (3/sqrt(10))) = viewZoom + 0.076001546722525，
+    // 与视口高度、pitch 无关（两者相消；见 DETAIL-ZOOM-REPORT.md §2.1/§5）。
+    // 偏离中心的瓦片会从这个值往下掉，但 shader 只取一个标量，中心值即可。
+    gl.uniform1f(u.u_detail, this.map.getZoom() + DETAIL_ZOOM_OFFSET);
     gl.uniform1f(u.u_cycle, dn.cycle);
     gl.uniform1f(u.u_lights, dn.lights);
     gl.uniform1f(u.u_material, 1);
@@ -422,10 +637,7 @@ export class PlanetLayer {
     gl.uniform1f(u.u_time_days, s.timeDays);
     gl.uniform1f(u.u_twinkle, 0);
     gl.uniform1f(u.u_debug, 0);
-    gl.uniform1f(u.u_roads_takeover, s.roadHandoff);
-    gl.uniform1f(u.u_mid_takeover, s.midHandoff);
-    // 0.30：夜路接管后 atlas 仍保留未解析路灯的底光（round03.frag 已验收常数）。
-    gl.uniform1f(u.u_atlas_floor, s.roadHandoff > 0 || s.midHandoff > 0 ? 0.30 : 0);
+    gl.uniform1f(u.u_road_fallback, s.roadFallback ? 1 : 0);
     if (this.texelSizes[1]) gl.uniform2fv(u.u_elevation_texel, this.texelSizes[1]);
     if (this.texelSizes[0]) gl.uniform2fv(u.u_lights_texel, this.texelSizes[0]);
 
@@ -456,6 +668,7 @@ export class PlanetLayer {
 
   onRemove(_map: MLMap, gl: WebGL2RenderingContext): void {
     this.removed = true;
+    this.cancelScheduledHiAtlas();
     this.disposeGL(gl);
   }
 }

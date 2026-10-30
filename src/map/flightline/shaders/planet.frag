@@ -15,14 +15,18 @@
 //    (the original's clim_uv), unlike the ±85° material / elevation / lights atlases.
 //  - Emitted colours are used in display space: MapLibre's framebuffer is gamma-space,
 //    so srgb2lin() from the linear HDR source is omitted.
-// Round 03 adds the road-pass handover only: the recovered original value
-// LIGHTS_UNDER_ROADS = 0.45 is applied through u_roads_takeover, which the app
-// keeps at 0 until the night-road layer has real geometry and is being drawn.
-// Round 09 adds u_mid_takeover for the mid-scale network's own handover
-// (3.5..5.5, faded back by 7.0). It dims the atlas to 0.62 of full rather than
-// the near network's 0.45, because the shipped z4-6 data is an arterial
-// skeleton, not a full street grid; the near constant still wins wherever it
-// applies. Everything else (LUT, material, ocean, snow, atmosphere) is Round 02
+// Round 12 restores the original's two-curve atlas handover
+// (reference/planet-original.wgsl:564-597): the warm pool and the lamp dots are
+// both gated by handoff = 1 - smootherstep(5.25, 8.5, detail), and the dots
+// additionally hold LIGHTS_UNDER_ROADS from z5.5 on. The Round 03/09 takeover
+// pair (u_roads_takeover / u_mid_takeover), the 0.30 atlas floor and the P2
+// pre-load cap are gone: at z7.7 the pool now follows the original (~0.10)
+// instead of staying at 0.45, a 4.5x too-bright 8K atlas magnified ~6.5x.
+// Round 12 P2 follow-up: while the sparse low-detail fallback is the visible
+// road set (u_road_fallback = 1) the atlas is multiplied by
+// FALLBACK_ATLAS_GAIN so those lines read against the city glow; the real set
+// passes 0 and keeps the original curve.
+// Everything else (LUT, material, ocean, snow, atmosphere) is Round 02
 // unchanged.
 //  - The terminator LUT alpha ramp is inferred (palette is evidenced; alpha is not).
 precision highp float;
@@ -47,9 +51,7 @@ uniform float u_snow;
 uniform float u_time_days;
 uniform float u_twinkle;
 uniform float u_debug;
-uniform float u_roads_takeover;
-uniform float u_mid_takeover;
-uniform float u_atlas_floor;
+uniform float u_road_fallback;
 uniform vec2 u_lights_texel;
 uniform vec2 u_elevation_texel;
 uniform sampler2D t_lights;
@@ -62,6 +64,17 @@ uniform sampler2D t_lut;
 const float PI = 3.141592653589793;
 const float MATERIAL_FADE_START = 4.5;
 const float MATERIAL_FADE_END = 6.5;
+// Round 12 P6: night cover left on the vector tiles once the game surface can no
+// longer resolve the near field. 0.45 is the value the atlas handover already
+// holds from z5.5 on, so the near view keeps the same darkness while the tiles
+// (landcover, landuse, water, coast) do the drawing.
+const float NIGHT_TILE_COVER = 0.45;
+// P6 switch: revealing the vector tiles under the night cover looked plausible
+// but the game's near-night reference (Shanghai at map zoom) has NO land colour
+// at all — black land, road glow only. Until the detail-zoom mapping below is
+// recovered, keep the handover off (0.0) so this does not ship a guess. With
+// 0.0 every surface_keep scaling below is the identity.
+const float NIGHT_SURFACE_HANDOVER = 0.0;
 const float ORBIT_LIFT_START = 3.0;
 const float ORBIT_LIFT_END = 5.0;
 const float ORBIT_LIFT_SAT = 1.08;
@@ -71,7 +84,10 @@ const float ORBIT_RELIEF_GAIN = 4.0;
 // Recovered from flglobe.dll: the tile pass's road glow draws the lit network and
 // the atlas stays as the unresolved lamps between the roads (0.45 once handed over).
 const float LIGHTS_UNDER_ROADS = 0.45;
-const float MID_LIGHTS_UNDER_ROADS = 0.38;
+// Round 12 P2 follow-up: while the sparse low-detail fallback is the visible
+// road set, the atlas is multiplied by this gain so those roads read against
+// the city glow. Real sets pass u_road_fallback = 0 and keep the original curve.
+const float FALLBACK_ATLAS_GAIN = 0.65;
 // Stable/perennial snow thresholds on the climatology (peak, months). Unit of the
 // user's "conservative ice" brief: ice sheets and real glaciers only.
 const float SNOW_PEAK_LO = 0.82;
@@ -299,6 +315,20 @@ void main() {
     vec2 dy = dFdy(uv);
     vec2 uv_width = fwidth(uv);
 
+    // Round 12 P6: the game surface cannot resolve the near field — one light-atlas
+    // texel spans ~1.4 screen px at z5.5 and ~6.5 px at z7.7, and the material is
+    // gone by detail 6.5 — so a flat LUT colour was all that was left on land, which
+    // is the "整个底图都很糊" report. Hand the composite over to the vector tiles as
+    // that magnification grows: cap the night cover at NIGHT_TILE_COVER and drop the
+    // game surface. The driving term is screen px per atlas texel, so the handover is
+    // continuous and lands at a different zoom for different latitudes. Day and the
+    // far/orbital view keep the original numbers: min() leaves the small daytime
+    // alpha alone and the handover is 0 until one texel reaches ~1.2 px.
+    float texel_px = u_lights_texel.x / max(uv_width.x, 1e-9);
+    float surface_handover = NIGHT_SURFACE_HANDOVER * smoothstep(1.15, 3.0, texel_px);
+    float surface_keep = 1.0 - surface_handover;
+    sky.a = mix(sky.a, min(sky.a, NIGHT_TILE_COVER), surface_handover);
+
     vec4 city = lights_grad(uv, dx, dy, pw, ring_lights);
     float land_mask = city.a;
 
@@ -334,6 +364,9 @@ void main() {
         spec = (e / (1.0 + e)) * 0.75 * day * water;
         glint = mix(vec3(1.0, 0.64, 0.34), vec3(1.0, 0.90, 0.72), smoothstep(0.05, 0.45, solar));
     }
+    // P6: the water sheen is part of the game surface; the tiles own the near field.
+    fres *= surface_keep;
+    spec *= surface_keep;
 
     float dither = (hash12(gl_FragCoord.xy) - 0.5) / 255.0 * cycle;
 
@@ -436,10 +469,20 @@ void main() {
         relief_shade = shade * land_mask * integrated_lod;
     }
 
-    // Arterial-only local data cannot fill a street grid at z8+, so Round 03
-    // keeps a floor of the unresolved atlas instead of fading it to zero:
-    // the original's full tile pass would have drawn the missing streets.
-    float handoff = max(1.0 - smootherstep(5.25, 8.5, detail), u_atlas_floor);
+    // Atlas handover: two curves, exactly like the original
+    // (reference/planet-original.wgsl:564-597). The soft warm pool AND the lamp
+    // dots are gated by handoff = 1 - smootherstep(5.25, 8.5, detail); the dots
+    // additionally hold LIGHTS_UNDER_ROADS from z5.5 on, while the pool keeps
+    // fading to the original's ~0.10 at z7.7. Round 12 P1 had collapsed the two
+    // into one 0.45 hold, which kept an 8K atlas magnified 6.5x at 4.5x its
+    // original brightness — the blurry orange sheet over the whole land.
+    float handoff = 1.0 - smootherstep(5.25, 8.5, detail);
+    // Round 12 P2 follow-up: the fallback's arterial set is sparse; while it is
+    // the visible road set, dim the atlas further so the lines read.
+    handoff *= mix(1.0, FALLBACK_ATLAS_GAIN, clamp(u_road_fallback, 0.0, 1.0));
+    // Pool and dots take different weights (see the original); do not apply the
+    // LIGHTS_UNDER_ROADS share twice or the atlas becomes keep^2.
+    float dot_keep = handoff * mix(1.0, LIGHTS_UNDER_ROADS, smoothstep(3.5, 5.5, detail));
     float emission = 0.0;
     vec3 light_rgb = vec3(0.0);
     float city_glow = 0.0;
@@ -464,16 +507,12 @@ void main() {
             float signal = tri * tri * (3.0 - 2.0 * tri);
             float tw = 1.0 + (signal - 0.5) * twinkle_amp;
             float density = pow(city.r, 0.45) * city.a;
-            emission = density * darkness * activity * tw * mix(0.28, 0.5, dark) * u_lights * handoff;
+            emission = density * darkness * activity * tw * mix(0.28, 0.5, dark) * u_lights * dot_keep;
             vec3 kind = mix(vec3(1.0, 0.63, 0.31), vec3(1.0, 0.86, 0.56), metro);
             light_rgb = mix(kind, vec3(1.0, 0.94, 0.84), smoothstep(0.55, 0.95, city.r));
-            // 0 keeps the atlas fully on; 1 is the original handover. The app
-            // supplies the zoom/availability gate so missing roads never dim
-            // the atlas before the network is actually drawn. The mid pass may
-            // dim earlier, but never deeper than the near network's 0.45.
-            float atlas_dim = max(MID_LIGHTS_UNDER_ROADS * u_mid_takeover,
-                                  (1.0 - LIGHTS_UNDER_ROADS) * u_roads_takeover);
-            emission *= 1.0 - atlas_dim;
+            // Round 12 P1-4: the dot weight (dot_keep) already carries the
+            // handover above, so the old atlas_dim block is gone; the pool and
+            // the dots take their separate weights from handoff / dot_keep.
         }
     }
 
@@ -515,6 +554,10 @@ void main() {
     day_snow = mix(day_snow, mix(vec3(0.995, 0.985, 0.955), vec3(0.98, 0.96, 0.92), dark), snow_highlight * 0.55);
     vec3 snow_rgb = mix(vec3(0.52, 0.60, 0.82), day_snow, snow_day);
 
+    // P6: material/terrain are the low-resolution game surface; hand them off with
+    // the same weight so land detail comes from the vector tiles instead.
+    material_alpha *= surface_keep;
+    terrain_alpha *= surface_keep;
     vec3 surface = material_rgb * material_alpha + terrain_rgb * terrain_alpha * (1.0 - material_alpha);
     surface *= mix(vec3(1.0), vec3(1.055, 1.012, 0.955), golden);
     float surface_alpha = material_alpha + terrain_alpha * (1.0 - material_alpha);

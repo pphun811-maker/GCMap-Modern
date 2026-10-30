@@ -1,0 +1,3126 @@
+{
+  "name": "road-glow-r2-style",
+  "purpose": "r2-road-glow-* night road layer definitions from flglobe.dll (minzoom 8, plus the 25 r2-road-glow-lit-{spill,kerb,core,rail} bands), in the game front end O1 render order.",
+  "dll": {
+    "path": "E:\\Game Logs\\Flightline Airline Sim Demo ZH\\run\\flglobe.dll",
+    "bytes": 25337522,
+    "sha256": "8bfce462cc469553828ef1bc04ad8a9f11091252a637e112afd31e43571fc303"
+  },
+  "note": "Faithful DLL record: source/source-layer/filter/width/blur/color are unmodified; night-roads.js translates the kind filters to the candidate k property and the night-roads GeoJSON source. line-opacity is removed at attach time and computed from the recovered night_road shader.",
+  "classes": [
+    "highway",
+    "major_road",
+    "medium_road",
+    "minor_road"
+  ],
+  "order": "r2 halo/core (highway, major_road, medium_road, minor_road) then O1 = [spill x (W1,T1)], [kerb/core x W1], rail, [kerb/core x T1]",
+  "layers": [
+    {
+      "offset": 13752067,
+      "layer": {
+        "id": "r2-road-glow-highway-halo",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "highway"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.1441622016
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.4278362112000001
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.45414
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.45414
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.4054293981481481
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.3875259259259259
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.528874074074074
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.58
+            ]
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            3,
+            9,
+            3.375,
+            10,
+            3.75,
+            11,
+            4.125,
+            12,
+            4.5,
+            13,
+            4.875,
+            14,
+            5.25,
+            15,
+            5.625,
+            16,
+            6,
+            17,
+            12,
+            18,
+            24,
+            19,
+            48,
+            20,
+            96,
+            21,
+            192,
+            22,
+            384
+          ],
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            3.6,
+            9,
+            3.677235405460477,
+            10,
+            3.8008120541972397,
+            11,
+            3.9985346921760603,
+            12,
+            4.3148909129421735,
+            13,
+            4.821060866167954,
+            14,
+            5.630932791329203,
+            15,
+            6.926727871587202,
+            16,
+            9,
+            17,
+            18,
+            18,
+            36,
+            19,
+            72,
+            20,
+            144,
+            21,
+            288,
+            22,
+            576
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13753134,
+      "layer": {
+        "id": "r2-road-glow-highway-core",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "highway"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.18641664000000002
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.55323648
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.58725
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.58725
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.5242621527777778
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.5011111111111111
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.6838888888888889
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.75
+            ]
+          ],
+          "line-blur": 0,
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            1.08,
+            9,
+            1.103170621638143,
+            10,
+            1.1402436162591718,
+            11,
+            1.1995604076528181,
+            12,
+            1.294467273882652,
+            13,
+            1.4463182598503863,
+            14,
+            1.6892798373987608,
+            15,
+            2.0780183614761607,
+            16,
+            2.6999999999999997,
+            17,
+            5.3999999999999995,
+            18,
+            10.799999999999999,
+            19,
+            21.599999999999998,
+            20,
+            43.199999999999996,
+            21,
+            86.39999999999999,
+            22,
+            172.79999999999998
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13754167,
+      "layer": {
+        "id": "r2-road-glow-major_road-halo",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "major_road"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.083614076928
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.24814500249600005
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.2634012
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.2634012
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.2351490509259259
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.22476503703703699
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.30674696296296294
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.3364
+            ]
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            3,
+            9,
+            3.375,
+            10,
+            3.75,
+            11,
+            4.125,
+            12,
+            4.5,
+            13,
+            4.875,
+            14,
+            5.25,
+            15,
+            5.625,
+            16,
+            6,
+            17,
+            12,
+            18,
+            24,
+            19,
+            48,
+            20,
+            96,
+            21,
+            192,
+            22,
+            384
+          ],
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            2.6,
+            9,
+            2.6557811261659,
+            10,
+            2.7450309280313396,
+            11,
+            2.8878306110160437,
+            12,
+            3.1163101037915695,
+            13,
+            3.481877292232411,
+            14,
+            4.0667847937377575,
+            15,
+            5.002636796146312,
+            16,
+            6.5,
+            17,
+            13,
+            18,
+            26,
+            19,
+            52,
+            20,
+            104,
+            21,
+            208,
+            22,
+            416
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13755253,
+      "layer": {
+        "id": "r2-road-glow-major_road-core",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "major_road"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.1081216512
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.3208771584
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.340605
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.340605
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.3040720486111111
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.29064444444444437
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.39665555555555554
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.43499999999999994
+            ]
+          ],
+          "line-blur": 0,
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            0.78,
+            9,
+            0.79673433784977,
+            10,
+            0.8235092784094019,
+            11,
+            0.866349183304813,
+            12,
+            0.9348930311374708,
+            13,
+            1.0445631876697232,
+            14,
+            1.2200354381213272,
+            15,
+            1.5007910388438936,
+            16,
+            1.95,
+            17,
+            3.9,
+            18,
+            7.8,
+            19,
+            15.6,
+            20,
+            31.2,
+            21,
+            62.4,
+            22,
+            124.8
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13756207,
+      "layer": {
+        "id": "r2-road-glow-medium_road-halo",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "medium_road"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.046131904512000006
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.13690758758400004
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.1453248
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.1453248
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.12973740740740738
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.12400829629629628
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.1692397037037037
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.1856
+            ]
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            3,
+            9,
+            3.375,
+            10,
+            3.75,
+            11,
+            4.125,
+            12,
+            4.5,
+            13,
+            4.875,
+            14,
+            5.25,
+            15,
+            5.625,
+            16,
+            6,
+            17,
+            12,
+            18,
+            24,
+            19,
+            48,
+            20,
+            96,
+            21,
+            192,
+            22,
+            384
+          ],
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            1.5,
+            9,
+            1.5286057057261024,
+            10,
+            1.5743748348878666,
+            11,
+            1.647605441546689,
+            12,
+            1.7647744122008049,
+            13,
+            1.9522447652473902,
+            14,
+            2.252197330121927,
+            15,
+            2.7321214339211854,
+            16,
+            3.5,
+            17,
+            7,
+            18,
+            14,
+            19,
+            28,
+            20,
+            56,
+            21,
+            112,
+            22,
+            224
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13757302,
+      "layer": {
+        "id": "r2-road-glow-medium_road-core",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "medium_road"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.05965332480000001
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.17703567360000003
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.18792000000000003
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.18792000000000003
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.16776388888888888
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.16035555555555556
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.21884444444444445
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.24
+            ]
+          ],
+          "line-blur": 0,
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            0.44999999999999996,
+            9,
+            0.4585817117178307,
+            10,
+            0.47231245046635995,
+            11,
+            0.4942816324640067,
+            12,
+            0.5294323236602414,
+            13,
+            0.5856734295742171,
+            14,
+            0.675659199036578,
+            15,
+            0.8196364301763556,
+            16,
+            1.05,
+            17,
+            2.1,
+            18,
+            4.2,
+            19,
+            8.4,
+            20,
+            16.8,
+            21,
+            33.6,
+            22,
+            67.2
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13758296,
+      "layer": {
+        "id": "r2-road-glow-minor_road-halo",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "minor_road"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.025949196288
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.07701051801600002
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.08174519999999999
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.08174519999999999
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.07297729166666665
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.06975466666666666
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.09519733333333333
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              138,
+              52,
+              0.10439999999999999
+            ]
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            3,
+            9,
+            3.375,
+            10,
+            3.75,
+            11,
+            4.125,
+            12,
+            4.5,
+            13,
+            4.875,
+            14,
+            5.25,
+            15,
+            5.625,
+            16,
+            6,
+            17,
+            12,
+            18,
+            24,
+            19,
+            48,
+            20,
+            96,
+            21,
+            192,
+            22,
+            384
+          ],
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            1.5,
+            9,
+            1.5286057057261024,
+            10,
+            1.5743748348878666,
+            11,
+            1.647605441546689,
+            12,
+            1.7647744122008049,
+            13,
+            1.9522447652473902,
+            14,
+            2.252197330121927,
+            15,
+            2.7321214339211854,
+            16,
+            3.5,
+            17,
+            7,
+            18,
+            14,
+            19,
+            28,
+            20,
+            56,
+            21,
+            112,
+            22,
+            224
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13759417,
+      "layer": {
+        "id": "r2-road-glow-minor_road-core",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "minor_road"
+        ],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0
+            ],
+            6.5,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.0335549952
+            ],
+            7,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.0995825664
+            ],
+            7.25,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.10570500000000001
+            ],
+            8,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.10570500000000001
+            ],
+            9,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.09436718749999999
+            ],
+            10,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.09019999999999999
+            ],
+            12,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.12309999999999999
+            ],
+            14,
+            [
+              "rgba",
+              255,
+              185,
+              92,
+              0.135
+            ]
+          ],
+          "line-blur": 0,
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            8,
+            0.44999999999999996,
+            9,
+            0.4585817117178307,
+            10,
+            0.47231245046635995,
+            11,
+            0.4942816324640067,
+            12,
+            0.5294323236602414,
+            13,
+            0.5856734295742171,
+            14,
+            0.675659199036578,
+            15,
+            0.8196364301763556,
+            16,
+            1.05,
+            17,
+            2.1,
+            18,
+            4.2,
+            19,
+            8.4,
+            20,
+            16.8,
+            21,
+            33.6,
+            22,
+            67.2
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13760396,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_minor",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "minor_road"
+            ],
+            [
+              "!=",
+              "kind_detail",
+              "service"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(150, 178, 204, 0.14)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            11,
+            0,
+            12.5,
+            0.5,
+            16,
+            24.86626011568871,
+            22,
+            1591.4406474040775
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            10.775379383465108,
+            22,
+            689.6242805417669
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13761028,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_major",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "major_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(255, 146, 60, 0.42)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            0,
+            12,
+            1.6,
+            16,
+            37.89144398581137,
+            22,
+            2425.0524150919277
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            16.932739031159457,
+            22,
+            1083.6952979942052
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13761626,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_link",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "has",
+            "is_link"
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(255, 146, 60, 0.42)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            13,
+            0,
+            13.5,
+            1,
+            16,
+            29.602690613915133,
+            22,
+            1894.5721992905685
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            13.854059207312282,
+            22,
+            886.6597892679861
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13762165,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_highway",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "highway"
+            ],
+            [
+              "!has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(255, 146, 60, 0.42)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            3,
+            0,
+            6,
+            1.1,
+            12,
+            1.6,
+            16,
+            48.54841260682082,
+            22,
+            3107.0984068365324
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            21.550758766930215,
+            22,
+            1379.2485610835338
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13762787,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_bridges_minor",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "minor_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(150, 178, 204, 0.14)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            11,
+            0,
+            12.5,
+            0.5,
+            16,
+            24.86626011568871,
+            22,
+            1591.4406474040775
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            10.775379383465108,
+            22,
+            689.6242805417669
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13763375,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_bridges_major",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "major_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(255, 146, 60, 0.42)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            0,
+            12,
+            1.6,
+            16,
+            37.89144398581137,
+            22,
+            2425.0524150919277
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            16.932739031159457,
+            22,
+            1083.6952979942052
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13763960,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_bridges_link",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(255, 146, 60, 0.42)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            13,
+            0,
+            13.5,
+            1,
+            16,
+            29.602690613915133,
+            22,
+            1894.5721992905685
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            13.854059207312282,
+            22,
+            886.6597892679861
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13764536,
+      "layer": {
+        "id": "r2-road-glow-lit-spill-roads_bridges_highway",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "highway"
+            ],
+            [
+              "!has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "rgba(255, 146, 60, 0.42)",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            3,
+            0,
+            6,
+            1.1,
+            12,
+            1.6,
+            16,
+            48.54841260682082,
+            22,
+            3107.0984068365324
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            16,
+            21.550758766930215,
+            22,
+            1379.2485610835338
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13765144,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_minor",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "minor_road"
+            ],
+            [
+              "!=",
+              "kind_detail",
+              "service"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#242a30",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            11,
+            0,
+            12.5,
+            0.5,
+            16,
+            8.288753371896236,
+            22,
+            530.4802158013591
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13765658,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_minor",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "minor_road"
+            ],
+            [
+              "!=",
+              "kind_detail",
+              "service"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#5a6874",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            11,
+            0,
+            12.5,
+            0.5,
+            16,
+            6.6310026975169905,
+            22,
+            424.3841726410874
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            3.3155013487584952,
+            22,
+            212.1920863205437
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13766276,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_major",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "major_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#6e4a2c",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            0,
+            12,
+            1.6,
+            16,
+            11.841076245566052,
+            22,
+            757.8288797162273
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13766757,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_major",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "major_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#d99d5f",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            0,
+            12,
+            1.6,
+            16,
+            9.472860996452843,
+            22,
+            606.2631037729819
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            4.736430498226421,
+            22,
+            303.13155188649097
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13767340,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_link",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "has",
+            "is_link"
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#6e4a2c",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            13,
+            0,
+            13.5,
+            1,
+            16,
+            8.288753371896236,
+            22,
+            530.4802158013591
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13767761,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_link",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "has",
+            "is_link"
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#d99d5f",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            13,
+            0,
+            13.5,
+            1,
+            16,
+            6.6310026975169905,
+            22,
+            424.3841726410874
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            3.3155013487584952,
+            22,
+            212.1920863205437
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13768286,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_highway",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "highway"
+            ],
+            [
+              "!has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#6e4a2c",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            3,
+            0,
+            6,
+            1.1,
+            12,
+            1.6,
+            16,
+            15.393399119235868,
+            22,
+            985.1775436310955
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13768791,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_highway",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "!has",
+              "is_tunnel"
+            ],
+            [
+              "!has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "highway"
+            ],
+            [
+              "!has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#d99d5f",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            3,
+            0,
+            6,
+            1.1,
+            12,
+            1.6,
+            16,
+            12.314719295388695,
+            22,
+            788.1420349048765
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            6.1573596476943475,
+            22,
+            394.07101745243824
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13769400,
+      "layer": {
+        "id": "r2-road-glow-lit-rail-roads_rail",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "==",
+            "kind",
+            "rail"
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#1f1d1b",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            3,
+            0,
+            6,
+            0.15,
+            16,
+            5.920538122783026,
+            22,
+            378.91443985811367
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13769824,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_bridges_minor",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "minor_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#242a30",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            11,
+            0,
+            12.5,
+            0.5,
+            16,
+            8.288753371896236,
+            22,
+            530.4802158013591
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13770294,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_bridges_minor",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "minor_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#5a6874",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            11,
+            0,
+            12.5,
+            0.5,
+            16,
+            6.6310026975169905,
+            22,
+            424.3841726410874
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            3.3155013487584952,
+            22,
+            212.1920863205437
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13770868,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_bridges_major",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "major_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#6e4a2c",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            0,
+            12,
+            1.6,
+            16,
+            11.841076245566052,
+            22,
+            757.8288797162273
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13771336,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_bridges_major",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "major_road"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#d99d5f",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            6,
+            0,
+            12,
+            1.6,
+            16,
+            9.472860996452843,
+            22,
+            606.2631037729819
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            4.736430498226421,
+            22,
+            303.13155188649097
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13771906,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_bridges_link",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#6e4a2c",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            13,
+            0,
+            13.5,
+            1,
+            16,
+            8.288753371896236,
+            22,
+            530.4802158013591
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13772364,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_bridges_link",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 12,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#d99d5f",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            13,
+            0,
+            13.5,
+            1,
+            16,
+            6.6310026975169905,
+            22,
+            424.3841726410874
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            3.3155013487584952,
+            22,
+            212.1920863205437
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13772926,
+      "layer": {
+        "id": "r2-road-glow-lit-kerb-roads_bridges_highway",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "highway"
+            ],
+            [
+              "!has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#6e4a2c",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            3,
+            0,
+            6,
+            1.1,
+            12,
+            1.6,
+            16,
+            15.393399119235868,
+            22,
+            985.1775436310955
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    },
+    {
+      "offset": 13773417,
+      "layer": {
+        "id": "r2-road-glow-lit-core-roads_bridges_highway",
+        "type": "line",
+        "source": "flightline-r2-basemap",
+        "source-layer": "roads",
+        "minzoom": 8,
+        "filter": [
+          "all",
+          [
+            "all",
+            [
+              "has",
+              "is_bridge"
+            ],
+            [
+              "==",
+              "kind",
+              "highway"
+            ],
+            [
+              "!has",
+              "is_link"
+            ]
+          ],
+          [
+            "!has",
+            "is_tunnel"
+          ]
+        ],
+        "layout": {
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#d99d5f",
+          "line-width": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            3,
+            0,
+            6,
+            1.1,
+            12,
+            1.6,
+            16,
+            12.314719295388695,
+            22,
+            788.1420349048765
+          ],
+          "line-blur": [
+            "interpolate",
+            [
+              "exponential",
+              2
+            ],
+            [
+              "zoom"
+            ],
+            14,
+            0,
+            16,
+            6.1573596476943475,
+            22,
+            394.07101745243824
+          ],
+          "line-opacity": 0,
+          "line-opacity-transition": {
+            "duration": 0,
+            "delay": 0
+          }
+        }
+      }
+    }
+  ]
+}
