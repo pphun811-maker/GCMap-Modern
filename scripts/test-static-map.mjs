@@ -8,7 +8,8 @@ import {VectorTile} from '@mapbox/vector-tile';
 import {PbfReader} from 'pbf';
 import {createRoadService as nodeService} from '../server/roads.mjs';
 import {createRoadService as browserService} from '../src/map/flightline/staticRoadCore.mjs';
-import {overzoomMvt} from '../src/map/flightline/overzoom.mjs';
+import {overzoomMvt, filterMvtLayer, keepMvtLayers, mvtLayerBytes} from '../src/map/flightline/overzoom.mjs';
+import {WORLD_TILE_LAYERS} from '../src/map/flightline/worldLayers.mjs';
 const raw = fs.readFileSync(new URL('./fixtures/roads-shanghai-z6.pbf',import.meta.url));
 const density = new Uint8Array(zlib.gunzipSync(fs.readFileSync('server/map-assets/road_density_v1.bin.gz')));
 const remote = {getTile:async (z,x,y)=>z===6&&x===53&&y===26?raw:null};
@@ -34,6 +35,83 @@ for(const [name,layer] of Object.entries(parent.layers))for(let i=0;i<layer.leng
  assert.equal(numsA.length,numsB.length);numsA.forEach((n,j)=>assert.ok(Math.abs(n-numsB[j])<1e-9));compared++;
 }
 console.log('PASS ancestor fallback preserves coordinates/properties:',compared,'features');
+// Building/address splitting is a raw MVT rewrite. Feature ordinals are used
+// instead of IDs because MVT IDs are optional; other layers and every
+// non-feature field stay byte-for-byte.
+const enc=n=>{const out=[];let v=n>>>0;do{let b=v&127;v>>>=7;if(v)b|=128;out.push(b);}while(v);return out;};
+const sBytes=s=>[...Buffer.from(s)];
+const ld=(field,payload)=>[(field<<3)|2,...enc(payload.length),...payload];
+const vi=(field,n)=>[(field<<3)|0,...enc(n)];
+const zig=n=>((n<<1)^(n>>31))>>>0;
+const mvtFeature=({id,kind,x=0,y=0})=>{
+ const out=[];
+ if(id!==undefined)out.push(...vi(1,id));
+ out.push(...ld(2,[0,...enc(kind)]));   // packed tags: key 0 ('kind') -> value index
+ out.push(...vi(3,1));                  // POINT
+ out.push(...ld(4,[9,...enc(zig(x)),...enc(zig(y))]));
+ return out;
+};
+const mvtLayer=(name,features)=>{
+ const out=[...ld(1,sBytes(name))];
+ for(const f of features)out.push(...ld(2,f));
+ out.push(...ld(3,sBytes('kind')));
+ for(const value of ['building','address','county'])out.push(...ld(4,ld(1,sBytes(value))));
+ out.push(...vi(5,4096),...vi(15,2));
+ return out;
+};
+const mvtTile=(...layers)=>Uint8Array.from(layers.flatMap(l=>ld(3,l)));
+const decode=b=>new VectorTile(new PbfReader(b));
+const kinds=t=>Array.from({length:t.layers.buildings?.length??0},(_,i)=>t.layers.buildings.feature(i).properties.kind);
+// The daily tile carries several layers and boundaries comes first. Picking IDs
+// from the first layer (the earlier defect) would drop every building, so the
+// split must be addressed by layer name and ordinal.
+const multi=mvtTile(
+ mvtLayer('boundaries',[mvtFeature({id:999,kind:2})]),
+ mvtLayer('buildings',[mvtFeature({id:1,kind:0,x:10}),mvtFeature({id:2,kind:0,x:20}),mvtFeature({id:3,kind:1,x:30})]),
+ mvtLayer('pois',[mvtFeature({id:7,kind:0,x:5})]));
+assert.deepEqual(Object.keys(decode(multi).layers),['boundaries','buildings','pois']);
+assert.ok(mvtLayerBytes(multi,'buildings'));
+assert.equal(mvtLayerBytes(multi,'landuse'),null);
+const footprintTile=decode(filterMvtLayer(multi,'buildings',new Set([0,1])));
+assert.deepEqual(kinds(footprintTile),['building','building']);
+assert.equal(footprintTile.layers.boundaries.length,1);
+const addressTile=decode(filterMvtLayer(multi,'buildings',new Set([2])));
+assert.deepEqual(kinds(addressTile),['address']);
+assert.equal(addressTile.layers.boundaries.length,1);
+// only=true drops the layers the buildings source never draws.
+const onlyBuildings=decode(filterMvtLayer(multi,'buildings',new Set([0,1]),true));
+assert.deepEqual(kinds(onlyBuildings),['building','building']);
+assert.equal(onlyBuildings.layers.boundaries,undefined);
+// A spec-valid tile without IDs must still split by ordinal.
+const noIds=mvtTile(mvtLayer('buildings',[mvtFeature({kind:0,x:1}),mvtFeature({kind:1,x:2})]));
+assert.equal(decode(noIds).layers.buildings.feature(1).id,undefined);
+assert.deepEqual(kinds(decode(filterMvtLayer(noIds,'buildings',new Set([1])))),['address']);
+// An empty keep set removes the layer but leaves every other layer intact.
+const noFeatures=decode(filterMvtLayer(multi,'buildings',new Set()));
+assert.equal(noFeatures.layers.buildings,undefined);
+assert.equal(noFeatures.layers.boundaries.length,1);
+// Layers no style layer draws are dropped before the tile leaves the server.
+const worldKept=decode(keepMvtLayers(multi,WORLD_TILE_LAYERS));
+assert.deepEqual(Object.keys(worldKept.layers),['boundaries','buildings']);
+assert.equal(worldKept.layers.pois,undefined);
+assert.equal(keepMvtLayers(mvtTile(mvtLayer('pois',[mvtFeature({id:1,kind:0})])),WORLD_TILE_LAYERS),null);
+// The keep set must cover every world source-layer either style draws.
+for(const file of ['dark','light']){
+ const style=JSON.parse(fs.readFileSync(`src/map/flightline/styles/${file}.json`,'utf8'));
+ const used=new Set(style.layers.filter(l=>l.source==='world'&&l['source-layer']).map(l=>l['source-layer']));
+ assert.deepEqual([...used].sort(),[...WORLD_TILE_LAYERS].sort(),`${file}: world keep-set is stale`);
+}
+console.log('PASS world tile keep-set matches both styles and drops unused layers');
+// Real fixture: filtering the road layer keeps it valid and other layers whole.
+const roadLayer=parent.layers.roads;
+if(roadLayer&&roadLayer.length){
+ const onlyFirst=decode(filterMvtLayer(raw,'roads',new Set([0])));
+ assert.ok(onlyFirst.layers.roads.length>=1);
+ assert.equal(onlyFirst.layers.roads.feature(0).id,roadLayer.feature(0).id);
+ assert.equal(onlyFirst.layers.water?.length,parent.layers.water?.length);
+ assert.deepEqual(Object.keys(onlyFirst.layers).sort(),Object.keys(parent.layers).sort());
+}
+console.log('PASS building/address split is ordinal-based and preserves other layers');
 for(const name of ['bathymetry_z0_z8','terrain_dem_z0_z5']){
  const fd=fs.openSync(`public/map-static/archives/${name}.pmtiles`,'r');const header=Buffer.alloc(127);fs.readSync(fd,header);fs.closeSync(fd);
  assert.equal(header.subarray(0,7).toString(),'PMTiles');assert.equal(header[7],3);
@@ -50,6 +128,21 @@ try{
  assert.ok(style.glyphs.includes('map-static/fonts/'));
  assert.ok(!JSON.stringify(style).includes('/map-res/'));
  console.log('PASS static build routes resources without Node endpoints');
+ // The real static glue must split by layer name, not by the tile's first layer.
+ const {filterBuildingLayer}=await vite.ssrLoadModule('/src/map/flightline/staticTiles.ts');
+ const gluedFootprints=decode(filterBuildingLayer(multi,false));
+ assert.deepEqual(kinds(gluedFootprints),['building','building']);
+ assert.equal(gluedFootprints.layers.boundaries,undefined);
+ assert.equal(gluedFootprints.layers.pois,undefined);
+ const gluedAddresses=decode(filterBuildingLayer(multi,true));
+ assert.deepEqual(kinds(gluedAddresses),['address']);
+ assert.equal(gluedAddresses.layers.boundaries.length,1);
+ assert.equal(gluedAddresses.layers.pois,undefined);
+ const allFootprints=mvtTile(mvtLayer('buildings',[mvtFeature({kind:0,x:1})]));
+ assert.deepEqual(Object.keys(decode(filterBuildingLayer(allFootprints,false)).layers),['buildings']);
+ const noBuildings=mvtTile(mvtLayer('boundaries',[mvtFeature({id:1,kind:2})]));
+ assert.deepEqual(Object.keys(decode(filterBuildingLayer(noBuildings,true)).layers),['boundaries']);
+ console.log('PASS static tile split keeps the layer its source draws');
  // Execute the actual controller method without constructing a DOM/WebGL MapLibre instance.
  const source=fs.readFileSync('src/map/MapController.ts','utf8');
  const start=source.indexOf('  onReady(cb: () => void): void {');

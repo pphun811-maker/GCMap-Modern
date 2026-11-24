@@ -301,6 +301,17 @@ void main() {
     sky.rgb += vec3(0.96, 0.48, 0.18) * golden_alpha;
     sky.a = clamp(sky.a + golden_alpha * (1.0 - sky.a), 0.0, 1.0);
 
+    // Below z10 every atlas effect has faded out. Keep the identical LUT and
+    // golden-hour cover, without evaluating invisible land/water models. The
+    // halo is still composited (it only exists near the globe silhouette, so it
+    // is free for interior pixels) and debug views keep their own path.
+    if (zoom >= 10.0 && u_debug < 0.5) {
+        float near_dither = (hash12(gl_FragCoord.xy) - 0.5) / 255.0 * cycle;
+        float near_alpha = clamp(sky.a + near_dither, 0.0, 1.0);
+        fragColor = vec4(sky.rgb + near_dither + glow * (1.0 - near_alpha), near_alpha);
+        return;
+    }
+
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, clamp((radians(85.0) - lat) / radians(170.0), 0.0, 1.0));
     float pw = polar_weight(uv.y);
     vec4 ring_lights = vec4(0.0);
@@ -412,7 +423,7 @@ void main() {
     vec4 snow_climate = vec4(0.0);
     float snow_support = 0.0;
     float snow_stable = 0.0;
-    if (u_snow > 0.5 && land_mask > 0.001) {
+    if (u_snow > 0.5 && frozen_visible && land_mask > 0.001) {
         snow_climate = textureGrad(t_snow, clim_uv, clim_dx, clim_dy);
         float peak = clamp((snow_climate.a - 0.25) / 0.75, 0.0, 1.0);
         float months = clamp(snow_climate.b / max(peak, 0.002), 0.0, 1.0) * 12.0;
@@ -486,7 +497,7 @@ void main() {
     float emission = 0.0;
     vec3 light_rgb = vec3(0.0);
     float city_glow = 0.0;
-    if (handoff > 0.0) {
+    if (handoff > 0.0 && u_lights > 0.0) {
         vec4 bloom = lights_grad(uv, dx * 8.0, dy * 8.0, pw, ring_lights);
         float bloom_dark = 1.0 - smoothstep(-0.21, -0.02, sin_elev);
         city_glow = pow(bloom.r, 0.8) * bloom_dark * 0.10 * u_lights * handoff;

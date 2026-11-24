@@ -27,6 +27,8 @@ import crypto from 'node:crypto';
 import https from 'node:https';
 import { fileURLToPath } from 'node:url';
 import { createRoadService } from './roads.mjs';
+import { filterMvtLayer, keepMvtLayers, mvtLayerBytes } from '../src/map/flightline/overzoom.mjs';
+import { WORLD_TILE_LAYERS } from '../src/map/flightline/worldLayers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,7 +40,20 @@ const CACHE_ROOT = process.env.FLIGHTLINE_MAP_CACHE
   || path.join(process.cwd(), '.cache', 'flightline-map', 'pmtiles');
 const ASSETS_DIR = path.join(HERE, 'map-assets');
 
-const DEFAULT_DAILY_URL = 'https://build.protomaps.com/20261026.pmtiles';
+const DEFAULT_DAILY_URL = 'https://build.protomaps.com/20261123.pmtiles';
+// The daily planet build is republished every day and older dates are removed.
+// These are the candidates the server walks (newest first) when the pinned URL
+// has disappeared, so the near tiles do not silently fall back to ancestors.
+function recentDailyUrls(pinned) {
+  const out = [];
+  const now = Date.now();
+  for (let i = 1; i <= 10; i++) {
+    const day = new Date(now - i * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `https://build.protomaps.com/${day}.pmtiles`;
+    if (url !== pinned) out.push(url);
+  }
+  return out;
+}
 function dailyUrl() {
   const v = process.env.FLIGHTLINE_DAILY_URL;
   if (!v) return DEFAULT_DAILY_URL;
@@ -52,9 +67,14 @@ const DAILY_URL = dailyUrl();
 
 const REMOTE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36';
 const DISK_BUDGET_BYTES = 256 * 1024 * 1024;
-const MAX_INFLIGHT = 6;
+// 24 cold z15 tiles from the daily archive: 6 in flight ~2.66 s, 12 ~1.47 s,
+// 24 ~1.38 s but with much wider variance. 12 is the measured sweet spot.
+const MAX_INFLIGHT = Math.max(1, Number(process.env.FLIGHTLINE_MAX_INFLIGHT) || 12);
 const REQUEST_TIMEOUT_MS = 30000;
 const COOLDOWN_MS = 10000;
+// A fixed-date daily build that answers 4xx is gone for good; retrying it every
+// ten seconds only adds a stalled request per cooldown window.
+const MISSING_ARCHIVE_COOLDOWN_MS = 30 * 60_000;
 const MAX_DIR_CACHE = 512;
 
 // ---------------------------------------------------------------------------
@@ -125,9 +145,10 @@ function cacheIdentity(name, url, etag, total) {
 }
 
 class RemotePMTiles {
-  constructor(name, url, cacheRoot) {
+  constructor(name, url, cacheRoot, fallbackUrls = []) {
     this.name = name;
     this.url = url;
+    this.fallbackUrls = fallbackUrls;
     this.cacheRoot = path.join(cacheRoot, name);
     this.cacheDir = null;
     this.identity = null;
@@ -137,6 +158,7 @@ class RemotePMTiles {
     this.ready = null;
     this.dirs = new Map();
     this.inflight = new Map();
+    this.tiles = new Map();
     this.semaphore = 0;
     this.waiters = [];
     this.cooldownUntil = 0;
@@ -225,7 +247,11 @@ class RemotePMTiles {
   }
   async rangeBytes(offset, length) {
     const res = await this.httpRange(offset, length);
-    if (!res || res.status !== 206) throw Error(`${this.name} range ${offset}+${length}: HTTP ${res && res.status}`);
+    if (!res || res.status !== 206) {
+      const err = Error(`${this.name} range ${offset}+${length}: HTTP ${res && res.status}`);
+      if (res && res.status) err.status = res.status;
+      throw err;
+    }
     if (!Buffer.isBuffer(res.body) || res.body.length !== length) throw Error(`${this.name} range ${offset}+${length}: short body ${res.body && res.body.length}`);
     const etag = res.headers && res.headers.etag;
     // 观测对象已变化：拒绝把新对象字节写进启动时命名的命名空间。
@@ -234,17 +260,35 @@ class RemotePMTiles {
   }
   async initIdentity() {
     if (this.identity) return;
-    const res = await this.rangeBytes(0, 16384);
-    const head = res.body;
-    if (head.subarray(0, 7).toString() !== 'PMTiles') throw Error(`${this.name}: not PMTiles`);
-    if (head[7] > 3) throw Error(`${this.name}: spec ${head[7]} unsupported`);
-    const range = String((res.headers && res.headers['content-range']) || '');
-    const total = /^\d+$/.test(range.split('/')[1] || '') ? Number(range.split('/')[1]) : null;
-    this.etag = (res.headers && res.headers.etag) || null;
-    this.identity = cacheIdentity(this.name, this.url, this.etag, total);
-    this.cacheDir = path.join(this.cacheRoot, this.identity);
-    this.initDiskCache();
-    this.writeDisk(0, 16384, head);
+    // A fixed-date prototype build disappears after a few days. When the
+    // configured URL is gone, walk the recent dates so the near tiles keep
+    // working without a code change; the first live archive wins and pins the
+    // cache identity for this process.
+    let lastError = null;
+    for (const candidate of [this.url, ...this.fallbackUrls]) {
+      const previous = this.url;
+      this.url = candidate;
+      try {
+        const res = await this.rangeBytes(0, 16384);
+        const head = res.body;
+        if (head.subarray(0, 7).toString() !== 'PMTiles') throw Error(`${this.name}: not PMTiles`);
+        if (head[7] > 3) throw Error(`${this.name}: spec ${head[7]} unsupported`);
+        const range = String((res.headers && res.headers['content-range']) || '');
+        const total = /^\d+$/.test(range.split('/')[1] || '') ? Number(range.split('/')[1]) : null;
+        this.etag = (res.headers && res.headers.etag) || null;
+        this.identity = cacheIdentity(this.name, candidate, this.etag, total);
+        this.cacheDir = path.join(this.cacheRoot, this.identity);
+        this.initDiskCache();
+        this.writeDisk(0, 16384, head);
+        if (candidate !== previous) console.warn(`[map-resources] ${this.name}: archive moved to ${candidate}`);
+        return;
+      } catch (e) {
+        lastError = e;
+        const missing = e.status === 403 || e.status === 404 || e.status === 410;
+        if (!missing) throw e;
+      }
+    }
+    throw lastError || Error(`${this.name}: no archive candidate available`);
   }
   async getBytes(offset, length) {
     const cached = this.readDisk(offset, length);
@@ -262,9 +306,7 @@ class RemotePMTiles {
         this.writeDisk(offset, length, data);
         return data;
       } catch (e) {
-        this.stats.errors++;
-        this.stats.lastError = String(e.message || e);
-        if (++this.consecutiveFailures >= 3) this.cooldownUntil = Date.now() + COOLDOWN_MS;
+        this.noteFailure(e);
         throw e;
       } finally { this.release(); }
     })();
@@ -312,10 +354,36 @@ class RemotePMTiles {
     });
   }
   degraded() { return Date.now() < this.cooldownUntil; }
+  noteFailure(e) {
+    this.stats.errors++;
+    this.stats.lastError = String(e.message || e);
+    if (e.status === 403 || e.status === 404 || e.status === 410) {
+      this.cooldownUntil = Date.now() + MISSING_ARCHIVE_COOLDOWN_MS;
+      return;
+    }
+    if (++this.consecutiveFailures >= 3) this.cooldownUntil = Date.now() + COOLDOWN_MS;
+  }
   async tile(z, x, y) {
     if (z > this.maxZoom) return null;
-    await this.init();
+    const key = `${z}/${x}/${y}`;
+    const cached = this.tiles.get(key);
+    if (cached) return cached;
+    const job = this.fetchTile(z, x, y);
+    this.tiles.set(key, job);
+    try {
+      const data = await job;
+      this.tiles.set(key, Promise.resolve(data));
+      if (this.tiles.size > 384) this.tiles.delete(this.tiles.keys().next().value);
+      return data;
+    } catch (e) { this.tiles.delete(key); throw e; }
+  }
+  async fetchTile(z, x, y) {
+    // Fail inside the cooldown before touching the network: a dead daily build
+    // would otherwise pay a fresh HTTPS round trip on every near-tile request.
     if (this.degraded()) throw Error(`${this.name} cooling down after failures`);
+    // An archive that cannot even resolve its identity never reaches getBytes,
+    // so its failures must arm the same cooldown here.
+    try { await this.init(); } catch (e) { this.noteFailure(e); throw e; }
     const id = tileId(z, x, y);
     let offset = this.header.rootOffset, length = this.header.rootLength;
     for (let depth = 0; depth < 5; depth++) {
@@ -326,6 +394,53 @@ class RemotePMTiles {
       offset = this.header.leafOffset + e.offset; length = e.length;
     }
     throw Error(`${this.name}: directory nesting exceeded`);
+  }
+}
+
+// Near tiles: decode the buildings layer once, then keep only the features each
+// source renders. Ordinals, not feature IDs, because MVT IDs are optional.
+const vectorTileModule = import('@mapbox/vector-tile');
+const pbfModule = import('pbf');
+const nearPairs = new WeakMap();
+function nearTilePair(raw, z) {
+  if (!raw || raw.length < 2) return Promise.resolve({ world: raw, buildings: raw });
+  // The daily Buffer is reused by both the world and buildings requests, so one
+  // decode serves both. Keyed by the buffer instance: a fresh tile never hits it.
+  const cached = nearPairs.get(raw);
+  if (cached) return cached;
+  const job = buildNearTilePair(raw, z);
+  nearPairs.set(raw, job);
+  return job;
+}
+async function buildNearTilePair(raw, z) {
+  let decoded = raw;
+  try {
+    if (raw[0] === 0x1f && raw[1] === 0x8b) decoded = zlib.gunzipSync(raw);
+  } catch { return { world: raw, buildings: raw }; }
+  if (z >= 18) return { world: decoded, buildings: decoded };
+  try {
+    const layerBytes = mvtLayerBytes(decoded, 'buildings');
+    if (!layerBytes) return { world: keepMvtLayers(decoded, WORLD_TILE_LAYERS), buildings: null };
+    const [{ VectorTileLayer }, pbf] = await Promise.all([vectorTileModule, pbfModule]);
+    const Reader = pbf.PbfReader ?? pbf.default;
+    const layer = new VectorTileLayer(new Reader(layerBytes));
+    const addresses = new Set();
+    const footprints = new Set();
+    for (let i = 0; i < layer.length; i++) {
+      const f = layer.feature(i);
+      (f.properties.kind === 'address' ? addresses : footprints).add(i);
+    }
+    const world = addresses.size === layer.length ? decoded : filterMvtLayer(decoded, 'buildings', addresses);
+    return {
+      // Drop protomaps layers no style layer draws (pois is over half of a
+      // dense z15 tile) before either source reaches the MapLibre worker.
+      world: keepMvtLayers(world, WORLD_TILE_LAYERS),
+      buildings: filterMvtLayer(decoded, 'buildings', footprints, true),
+    };
+  } catch (e) {
+    // Filtering is an optimisation; never turn a decodable tile into a 5xx.
+    console.warn(`[map-resources] near tile split skipped: ${e.message || e}`);
+    return { world: decoded, buildings: decoded };
   }
 }
 
@@ -442,8 +557,17 @@ function overzoomMvt(buf, scale, qx, qy) {
   return Buffer.concat(parts);
 }
 class AncestorOverzoom {
-  constructor(source) { this.source = source; }
+  constructor(source) { this.source = source; this.cache = new Map(); }
   async tile(z, x, y) {
+    const key = `${z}/${x}/${y}`;
+    const cached = this.cache.get(key);
+    if (cached && cached.at + 10000 > Date.now()) return cached.data;
+    const data = await this.transform(z, x, y);
+    this.cache.set(key, { at: Date.now(), data });
+    if (this.cache.size > 128) this.cache.delete(this.cache.keys().next().value);
+    return data;
+  }
+  async transform(z, x, y) {
     const src = this.source;
     await src.init();
     const base = src.maxZoom;
@@ -454,7 +578,7 @@ class AncestorOverzoom {
     const raw = await src.tile(base, ax, ay);
     if (!raw) return null;
     const decoded = raw.length > 2 && raw[0] === 0x1f && raw[1] === 0x8b ? zlib.gunzipSync(raw) : raw;
-    return zlib.gzipSync(overzoomMvt(decoded, factor, qx, qy));
+    return Buffer.from(overzoomMvt(decoded, factor, qx, qy));
   }
   get maxZoom() { return this.source.maxZoom; }
 }
@@ -483,7 +607,7 @@ function getRuntime() {
   const remotes = {
     'official-world': new RemotePMTiles('official-world', 'https://maps.playflightline.com/maps/world_z0_z12.pmtiles', CACHE_ROOT),
     'official-buildings': new RemotePMTiles('official-buildings', 'https://maps.playflightline.com/maps/buildings_z11_z14.pmtiles', CACHE_ROOT),
-    daily: new RemotePMTiles('daily', DAILY_URL, CACHE_ROOT),
+    daily: new RemotePMTiles('daily', DAILY_URL, CACHE_ROOT, recentDailyUrls(DAILY_URL)),
   };
   const worldAncestor = new AncestorOverzoom(remotes['official-world']);
   const buildingsAncestor = new AncestorOverzoom(remotes['official-buildings']);
@@ -509,6 +633,9 @@ function getRuntime() {
   });
   const counts = { requests: 0, tiles: 0, empty: 0, errors: 0, bytes: 0 };
   runtime = { archives, remotes, worldAncestor, buildingsAncestor, roads, counts, roadsFailures: () => roadsRemoteFailures };
+  // Warm the daily header/directory while the page is still loading: the first
+  // z13+ tile then only pays for its own ranges instead of the archive init.
+  remotes.daily.init().catch((e) => remotes.daily.noteFailure(e));
   console.log(`[map-resources] local archives: world=${!!archives.world} bathymetry=${!!archives.bathymetry} terrain=${!!archives.terrain}`);
   return runtime;
 }
@@ -565,6 +692,24 @@ function sendFile(req, res, file, type) {
 async function serveRemoteTile(req, res, plan) {
   const rt = getRuntime();
   rt.counts.tiles++;
+  if (plan.dailyPair) {
+    try {
+      const raw = await rt.remotes.daily.tile(plan.tileZ, plan.tileX, plan.tileY);
+      if (!raw) { rt.counts.empty++; res.writeHead(204).end(); return; }
+      const pair = await nearTilePair(raw, plan.tileZ);
+      const data = pair[plan.sourceKind];
+      if (!data || data.length === 0) { rt.counts.empty++; res.writeHead(204).end(); return; }
+      res.setHeader('Content-Type', 'application/x-protobuf');
+      res.setHeader('Content-Encoding', 'identity');
+      res.setHeader('X-Tile-Source', 'daily-filtered');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Content-Length', data.length);
+      if (req.method === 'HEAD') res.end(); else res.end(data);
+      return;
+    } catch {
+      // Preserve the accepted ancestor recovery below if daily is unavailable.
+    }
+  }
   if (!plan.local && !plan.remote) {
     rt.counts.empty++; res.writeHead(204).end(); return;
   }
@@ -590,17 +735,23 @@ async function serveRemoteTile(req, res, plan) {
     try {
       const adapted = await plan.ancestor.tile(plan.tileZ, plan.tileX, plan.tileY);
       if (adapted) {
+        // The ancestor path serves both sources; sending the world variant to a
+        // buildings request would strip every footprint (the same daily tile is
+        // shared), so pick the variant the endpoint actually asked for.
+        const pair = await nearTilePair(adapted, plan.tileZ);
+        const body = pair[plan.sourceKind];
         plan.remote.stats.fallbackTiles++;
         plan.remote.stats.fallbackActive = true;
         plan.remote.stats.lastFallbackAt = Date.now();
+        if (!body || body.length === 0) { rt.counts.empty++; res.writeHead(204).end(); return; }
         res.setHeader('Content-Type', 'application/x-protobuf');
-        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Content-Encoding', 'identity');
         res.setHeader('X-Tile-Source', `${plan.from}-ancestor-${plan.ancestor.maxZoom}`);
         res.setHeader('X-Tile-Detail', 'reduced');
         res.setHeader('X-Tile-Fallback', 'ancestor');
         res.setHeader('Cache-Control', 'public, max-age=10');
-        res.setHeader('Content-Length', adapted.length);
-        if (req.method === 'HEAD') res.end(); else res.end(adapted);
+        res.setHeader('Content-Length', body.length);
+        if (req.method === 'HEAD') res.end(); else res.end(body);
         return;
       }
       failure += '; ancestor empty';
@@ -620,12 +771,16 @@ async function serveRemoteTile(req, res, plan) {
     rt.counts.empty++; res.writeHead(204).end(); return;
   }
   plan.remote.stats.fallbackActive = false;
+  const output = plan.sourceKind === 'world' || plan.sourceKind === 'buildings'
+    ? (await nearTilePair(data, plan.tileZ))[plan.sourceKind]
+    : data;
+  if (!output || output.length === 0) { rt.counts.empty++; res.writeHead(204).end(); return; }
   res.setHeader('Content-Type', 'application/x-protobuf');
-  res.setHeader('Content-Encoding', 'gzip');
+  res.setHeader('Content-Encoding', 'identity');
   res.setHeader('X-Tile-Source', plan.from);
   res.setHeader('Cache-Control', 'public, max-age=3600');
-  res.setHeader('Content-Length', data.length);
-  if (req.method === 'HEAD') res.end(); else res.end(data);
+  res.setHeader('Content-Length', output.length);
+  if (req.method === 'HEAD') res.end(); else res.end(output);
 }
 
 const PLANET_TEXTURES = new Set([
@@ -731,7 +886,7 @@ export function createMapResourceMiddleware(base = '/') {
       if (m) {
         const z = +m[1], x = +m[2], y = +m[3];
         if (z > 18 || x >= 2 ** z || y >= 2 ** z) { res.writeHead(400).end(); return; }
-        serveRemoteTile(req, res, { ...worldTile(z, x, y), tileZ: z, tileX: x, tileY: y })
+        serveRemoteTile(req, res, { ...worldTile(z, x, y), tileZ: z, tileX: x, tileY: y, sourceKind: 'world', dailyPair: z >= 13 && z <= 15 })
           .catch((e) => fail(res, e));
         return;
       }
@@ -739,7 +894,7 @@ export function createMapResourceMiddleware(base = '/') {
       if (m) {
         const z = +m[1], x = +m[2], y = +m[3];
         if (z > 18 || x >= 2 ** z || y >= 2 ** z) { res.writeHead(400).end(); return; }
-        serveRemoteTile(req, res, { ...buildingsTile(z, x, y), tileZ: z, tileX: x, tileY: y })
+        serveRemoteTile(req, res, { ...buildingsTile(z, x, y), tileZ: z, tileX: x, tileY: y, sourceKind: 'buildings', dailyPair: z === 15 })
           .catch((e) => fail(res, e));
         return;
       }
